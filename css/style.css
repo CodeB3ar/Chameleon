@@ -1,0 +1,4 @@
+body{margin:0;font-family:system-ui,sans-serif;line-height:1.5;color:#161616}
+.wrap{max-width:900px;margin:0 auto;padding:24px}
+header,footer{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:16px 0}
+.panel{border:1px solid #999;padding:24px;margin-top:24px}
