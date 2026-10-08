@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Chameleon — Style Showcase (disposable preview)</title>
+<!-- Body + display fonts vendored locally (exact live-site files).
+     Google Fonts kept as progressive-enhancement fallback only. -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  /* Self-contained: no links to css/ or js/. Main app untouched. */
+  /* Display font: proprietary LABSAmiga, vendored from live site. */
+  @font-face {
+    font-family: LabsAmiga;
+    src: url("assets/fonts/LABSAmiga-Regular.woff") format("woff");
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+  }
+  @font-face {
+    font-family: RobotoMono;
+    src: url("assets/fonts/RobotoMono-Regular.ttf") format("truetype");
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+  }
+  @font-face {
+    font-family: RobotoMono;
+    src: url("assets/fonts/RobotoMono-Bold.ttf") format("truetype");
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+  }
+  :root {
+    --lightgrey: #e4e4e4;
+    --dark: #0e0e0e;
+    --darklighter: #1b1b1b;
+    --grey: #9e9e9e;
+    --light: #f6f6f6;
+    --orange: #ff7120;
+    --bg: var(--lightgrey);
+    --card: var(--light);
+    --ink: var(--dark);
+    --line: rgba(14, 14, 14, .28);
+    --mono: "RobotoMono", "Roboto Mono", ui-monospace, "Space Mono", Menlo, Consolas, monospace;
+    --notch: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  }
+  * { box-sizing: border-box; scrollbar-width: none !important; }
+  ::selection { background: #FF7120; color: #000; }
+  body {
+    margin: 0; background-color: var(--lightgrey); color: var(--dark);
+    font-family: var(--mono); font-size: 1rem; line-height: 140%;
+    /* Faint vertical gridlines (pure CSS, offline-safe) under the hairline grid */
+    background-image: linear-gradient(to right, rgba(14,14,14,.12) 1px, transparent 1px);
+    background-size: 25% 100%;
+    background-repeat: repeat-x;
+  }
+  .wrap { max-width: 100%; margin: 0 auto; padding: 0 2.75rem 64px; }
+  .kicker { font-size: 12px; text-transform: uppercase; letter-spacing: .12em; }
+  .sq { display: inline-block; width: 8px; height: 8px; background: var(--orange); margin-right: 8px; }
+  section.block {
+    border: 1px solid var(--line); background: var(--card);
+    margin: 0 0 -1px; padding: 20px;
+  }
+  section.block > h2 { margin: 0 0 4px; font-size: 13px; text-transform: uppercase; letter-spacing: .12em; }
+  section.block > p.sub { margin: 0 0 16px; font-size: 12px; opacity: .7; }
+
+  /* REVIEW: tokens */
+  .swatches { display: flex; gap: 0; border: 1px solid var(--line); }
+  .sw { flex: 1; padding: 12px; font-size: 11px; text-transform: uppercase; border-left: 1px solid var(--line); }
+  .sw:first-child { border-left: none; }
+  .sw i { display: block; height: 36px; margin-bottom: 8px; border: 1px solid var(--line); }
+
+  /* REVIEW: buttons — leave-states fade via transition (offline ref) */
+  .btn-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .btn-orange {
+    background: var(--orange); color: var(--ink); border: none;
+    clip-path: var(--notch); padding: 12px 28px;
+    font-family: var(--mono); font-size: 12px; text-transform: uppercase; cursor: pointer;
+    transition: background-color .2s ease;
+  }
+  .btn-orange:hover { background: var(--lightgrey); }
+  .btn-ghost {
+    background: #fff; color: var(--ink); border: 1px solid var(--ink);
+    padding: 10px 20px; font-family: var(--mono); font-size: 12px;
+    text-transform: uppercase; cursor: pointer;
+    transition: background-color .2s ease, color .2s ease;
+  }
+  .btn-ghost:hover { background: var(--ink); color: #fff; }
+  .chips { display: flex; border: 1px solid var(--ink); }
+  .chip {
+    border: none; background: #fff; padding: 10px 18px;
+    font-family: var(--mono); font-size: 12px; font-weight: 700; cursor: pointer;
+    transition: background-color .2s ease, color .2s ease;
+  }
+  .chip + .chip { border-left: 1px solid var(--ink); }
+  .chip:not([aria-pressed="true"]):not(:disabled):hover { background: var(--lightgrey); }
+  .chip[aria-pressed="true"] { background: var(--ink); color: #fff; }
+  .chip:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* REVIEW: header nav tabs + orange corner dekors (ref header-menu-link) */
+  .site-header {
+    display: flex; align-items: stretch; gap: 0;
+    border: 1px solid var(--line); background: var(--card);
+    margin: 24px 0 -1px;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 8px; padding: 12px 16px;
+    font-size: 12px; font-weight: 700; text-transform: uppercase; white-space: nowrap;
+  }
+  .nav-tabs { display: flex; align-items: stretch; margin-left: auto; }
+  .nav-tab {
+    position: relative; display: flex; align-items: center; padding: 12px 18px;
+    font-size: 12px; text-transform: uppercase; text-decoration: none; color: var(--ink);
+    border-left: 1px solid var(--line);
+  }
+  .nav-tab .dekor {
+    opacity: 0; width: .5rem; height: .5rem; position: absolute;
+    transition: opacity .3s ease, transform .3s cubic-bezier(.455,.03,.515,.955);
+  }
+  .nav-tab .dekor-tr {
+    border-top: 2px solid var(--orange); border-left: 2px solid var(--orange);
+    top: 6px; left: 6px; transform: translate(50%, 50%);
+  }
+  .nav-tab .dekor-bl {
+    border-right: 2px solid var(--orange); border-bottom: 2px solid var(--orange);
+    bottom: 6px; right: 6px; transform: translate(-50%, -50%);
+  }
+  .nav-tab:hover .dekor { opacity: 1; transform: translate(0, 0); }
+  .ecosystem-cell {
+    display: flex; align-items: center; padding: 12px 16px;
+    border-left: 1px solid var(--line); font-size: 12px; text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  /* REVIEW: converter atoms */
+  .duo { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .dropbox {
+    border: 1px dashed var(--ink); background: #fff; min-height: 140px;
+    display: grid; place-items: center; align-content: center; gap: 4px; text-align: center; padding: 20px;
+  }
+  .dropbox.hot { background: #fff; outline: 2px solid var(--orange); outline-offset: -6px; }
+  .file-card {
+    display: flex; align-items: center; gap: 10px;
+    border: 1px solid var(--ink); background: #fff; padding: 8px 10px; margin-top: 12px;
+  }
+  .thumb { width: 40px; height: 40px; background: var(--ink); color: #fff; display: grid; place-items: center; font-size: 10px; }
+  .file-card .meta { flex: 1; min-width: 0; }
+  .file-card .meta b { display: block; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .file-card .meta span { font-size: 11px; opacity: .7; }
+  .ok { color: #0a7a2f; font-size: 11px; white-space: nowrap; }
+  .status-line { margin-top: 12px; font-size: 12px; }
+
+  /* REVIEW: hero split + graphic block + notched apply (ref button-primary) */
+  .hero-split { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); margin-top: 12px; }
+  .hero-split > div { min-height: 180px; }
+  .hero-copy { padding: 28px 24px; display: flex; flex-direction: column; justify-content: center; gap: 16px; background: var(--card); }
+  .hero-desc { margin: 0; font-size: 15px; line-height: 140%; max-width: 34ch; }
+  .apply-link { text-decoration: none; display: inline-block; align-self: flex-start; }
+  .apply-border {
+    display: block; background: var(--orange); padding: 1px;
+    clip-path: var(--notch);
+  }
+  .apply-text {
+    display: block; background: var(--orange); color: var(--ink);
+    font-size: 12px; text-transform: uppercase; padding: 10px 22px; white-space: nowrap;
+    clip-path: var(--notch);
+    transition: background-color .2s ease;
+  }
+  .apply-link:hover .apply-text { background: var(--lightgrey); }
+  .graphic-block {
+    position: relative; background: var(--dark); color: #fff;
+    display: grid; place-items: center; font-size: 64px;
+    border-left: 1px solid var(--line);
+  }
+  .graphic-block .gd { position: absolute; width: .5rem; height: .5rem; }
+  .graphic-block .gd-tl { top: .875rem; left: .875rem; border-top: 2px solid #fff; border-left: 2px solid #fff; }
+  .graphic-block .gd-tr { top: .875rem; right: .875rem; border-top: 2px solid #fff; border-right: 2px solid #fff; }
+  .graphic-block .gd-br { bottom: .875rem; right: .875rem; border-bottom: 2px solid #fff; border-right: 2px solid #fff; }
+  .graphic-block .gd-bl { bottom: .875rem; left: .875rem; border-bottom: 2px solid #fff; border-left: 2px solid #fff; }
+
+  /* REVIEW: type & grid — LabsAmiga marquee spec from the live site */
+  .display-crop { overflow: hidden; white-space: nowrap; border: 1px solid var(--line); background: var(--card); margin: 16px -20px 0; border-left: none; border-right: none; cursor: pointer; }
+  .display-crop span {
+    display: block; position: relative; white-space: nowrap;
+    color: var(--darklighter); font-family: "LabsAmiga", LabsAmiga, sans-serif; font-weight: 400;
+    font-synthesis: none; text-rendering: optimizeLegibility;
+  }
+  .display-crop .big { font-size: 21vh; line-height: 89%; column-gap: 1rem; row-gap: 1rem; margin: 0; }
+  .display-crop .small { font-size: 10vh; line-height: 89%; border-top: 1px solid var(--line); }
+  /* Per-letter scramble cells: each glyph lives in a fixed-width box measured
+     from the original character, so scrambling never changes line length. */
+  [scramble-text] { white-space: nowrap; }
+  [scramble-text] .sc-char {
+    display: inline-block; white-space: pre; text-align: center;
+    vertical-align: baseline; overflow: hidden;
+  }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; border: 1px solid var(--line); margin-top: 12px; }
+  .grid3 > div { padding: 16px; border-left: 1px solid var(--line); min-height: 120px; font-size: 12px; }
+  .grid3 > div:first-child { border-left: none; }
+  .blackbox {
+    background: var(--ink); color: #fff; position: relative;
+    display: grid; place-items: center; font-size: 28px;
+  }
+  .blackbox::before, .blackbox::after {
+    content: ""; position: absolute; width: 10px; height: 10px;
+    border: 2px solid #fff;
+  }
+  .blackbox::before { top: 8px; left: 8px; border-right: none; border-bottom: none; }
+  .blackbox::after { bottom: 8px; right: 8px; border-left: none; border-top: none; }
+
+  /* REVIEW: range strip + partners row (ref invert/darken on hover, fade on leave) */
+  .strip { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; border: 1px solid var(--line); }
+  .strip > div {
+    padding: 14px; border-left: 1px solid var(--line); font-size: 11px; text-transform: uppercase; text-align: center;
+    transition: filter .3s ease, background-color .3s ease, color .3s ease;
+  }
+  .strip > div:first-child { border-left: none; }
+  .strip > div:hover { filter: invert(); }
+  .partners { display: grid; grid-template-columns: 1fr 2fr auto; border: 1px solid var(--line); border-top: none; }
+  .partners > div { padding: 14px 16px; font-size: 12px; text-transform: uppercase; display: flex; align-items: center; }
+  .partner-title { background: var(--card); }
+  .partner-logo {
+    border-left: 1px solid var(--line); background: #fff; justify-content: space-between;
+    font-weight: 700; cursor: default;
+    transition: filter .3s ease;
+  }
+  .partner-logo:hover { filter: invert(); }
+  .partner-nav { border-left: 1px solid var(--line); background: var(--card); gap: 8px; }
+  .arrow {
+    width: 2.75rem; height: 2.75rem; display: grid; place-items: center;
+    border: 1px solid var(--line); background: #fff; cursor: pointer; font-size: 16px;
+    transition: background-color .3s ease, color .3s ease;
+  }
+  .arrow:hover { background: var(--dark); color: #fff; }
+  @media (max-width: 900px) {
+    .wrap { padding: 0 16px 48px; }
+    .hero-split { grid-template-columns: 1fr; }
+    .graphic-block { border-left: none; border-top: 1px solid var(--line); min-height: 220px; }
+    .site-header { flex-wrap: wrap; }
+    .nav-tabs { margin-left: 0; flex-wrap: wrap; }
+    .nav-tab, .ecosystem-cell { border-top: 1px solid var(--line); }
+  }
+  @media (max-width: 640px) {
+    .duo, .grid3 { grid-template-columns: 1fr; }
+    .strip { grid-template-columns: 1fr 1fr; }
+    .strip > div:nth-child(3) { border-left: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="kicker"><span class="sq"></span>Chameleon — style capability preview (disposable, main app untouched)</p>
+
+  <!-- REVIEW: header — offline nav with scramble tabs + orange corner dekors -->
+  <header class="site-header">
+    <div class="brand">🟧 Chameleon Labs</div>
+    <nav class="nav-tabs" aria-label="Preview sections">
+      <a href="#blk-buttons" class="nav-tab" scramble-link><span class="dekor dekor-tr"></span><span class="dekor dekor-bl"></span><span scramble-text data-text="Convert">Convert</span></a>
+      <a href="#blk-type" class="nav-tab" scramble-link><span class="dekor dekor-tr"></span><span class="dekor dekor-bl"></span><span scramble-text data-text="Type">Type</span></a>
+      <a href="#blk-range" class="nav-tab" scramble-link><span class="dekor dekor-tr"></span><span class="dekor dekor-bl"></span><span scramble-text data-text="Ecosystem">Ecosystem</span></a>
+    </nav>
+    <div class="ecosystem-cell">⁙⁙ Our Ecosystem</div>
+  </header>
+
+  <!-- REVIEW: hero — offline split: copy + notched apply + dark graphic block -->
+  <section class="block">
+    <h2>00 · Hero</h2>
+    <p class="sub">Offline hero recipe: description + orange apply + bracketed dark cell.</p>
+    <div class="hero-split">
+      <div class="hero-copy">
+        <p class="hero-desc"><span class="sq"></span>Adaptive image conversion — right in your browser. No uploads, no backend.</p>
+        <a class="apply-link" href="#blk-converter" scramble-link><span class="apply-border"><span class="apply-text" scramble-text data-text="Start converting">Start converting</span></span></a>
+      </div>
+      <div class="graphic-block"><i class="gd gd-tl"></i><i class="gd gd-tr"></i><i class="gd gd-br"></i><i class="gd gd-bl"></i><span>✳</span></div>
+    </div>
+  </section>
+
+  <!-- REVIEW: tokens — react to orange exactness, grid density, mono choice -->
+  <section class="block">
+    <h2>01 · Tokens</h2>
+    <p class="sub">Palette, hairlines, type. Everything below reuses these vars.</p>
+    <div class="swatches">
+      <div class="sw"><i style="background:#e4e4e4"></i>lightgrey #E4E4E4</div>
+      <div class="sw"><i style="background:#0e0e0e"></i>dark #0E0E0E</div>
+      <div class="sw"><i style="background:#ff7120"></i>orange #FF7120</div>
+      <div class="sw"><i style="background:#f6f6f6"></i>light #F6F6F6 + 1px line</div>
+    </div>
+    <p style="font-size:12px">RobotoMono vendored locally (exact live-site glyphs) — nav, labels, buttons, status. 1rem / 140%. Google Fonts kept as fallback only.</p>
+    <p id="font-status" style="font-size:12px;border:1px solid var(--line);padding:8px 10px;background:#fff">Checking fonts…</p>
+    <p style="font-family:'LabsAmiga',LabsAmiga,sans-serif;font-size:28px;margin:12px 0 0;font-synthesis:none">Display LabsAmiga 400 — headline CHAMELEON 123</p>
+  </section>
+
+  <!-- REVIEW: buttons — react to notch size (10px), orange fill, chip behavior -->
+  <section class="block" id="blk-buttons">
+    <h2>02 · Buttons &amp; chips</h2>
+    <p class="sub">Notched CTA, square ghost, segmented format picker.</p>
+    <div class="btn-row">
+      <button class="btn-orange" type="button">Start converting</button>
+      <button class="btn-ghost" type="button">📁 Browse</button>
+      <div class="chips" role="group" aria-label="Format">
+        <button class="chip" type="button" aria-pressed="true">PNG</button>
+        <button class="chip" type="button" aria-pressed="false">JPG</button>
+        <button class="chip" type="button" aria-pressed="false">WEBP</button>
+        <button class="chip" type="button" disabled title="coming soon">PDF β</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- REVIEW: converter atoms — react to box squareness, card density -->
+  <section class="block" id="blk-converter">
+    <h2>03 · Converter atoms</h2>
+    <p class="sub">Idle vs dragover box, queue card, status line. Static mock data.</p>
+    <div class="duo">
+      <div class="dropbox"><div>⤓</div><div><strong>Drop files here</strong> or click to browse</div><div style="font-size:11px;opacity:.7">PNG · JPG · WEBP — stays on your device</div></div>
+      <div class="dropbox hot"><div>⤓</div><div><strong>Drop to convert</strong></div><div style="font-size:11px;opacity:.7">orange focus ring</div></div>
+    </div>
+    <div class="file-card">
+      <div class="thumb">IMG</div>
+      <div class="meta"><b>hero-shot.png</b><span>2.4 MB → JPG</span></div>
+      <span class="ok">Done ✓</span>
+    </div>
+    <p class="status-line"><span class="sq"></span>Done! 1 file converted.</p>
+  </section>
+
+  <!-- REVIEW: type & grid — react to headline weight/crop, bracket corners.
+       Headline is static full CHAMELEON; hover jumbles letters like the
+       chain site's tabs (custom glyph pool, resolves left→right). -->
+  <section class="block" id="blk-type">
+    <h2>04 · Type &amp; grid</h2>
+    <p class="sub">Hover the headline — sweeps left→right. Move the mouse away — replays right→left. Always settles back.</p>
+    <div class="display-crop" scramble-link>
+      <span class="big scramble-hover" scramble-text data-text="CHAMELEON" data-glyphs="upper" title="Hover to scramble">CHAMELEON</span>
+      <span class="small scramble-hover" scramble-text data-text="CONVERT →" title="Hover to scramble">CONVERT →</span>
+    </div>
+    <div class="grid3">
+      <div><span class="sq"></span>ADAPTIVE<br><br>Convert images right in your browser. No uploads, no backend.</div>
+      <div style="display:grid;place-items:center;background:#fff">⤓ drop visual</div>
+      <div class="blackbox">✳</div>
+    </div>
+  </section>
+
+  <!-- REVIEW: range strip — react to partner-row parody + rail cells -->
+  <section class="block" id="blk-range">
+    <h2>05 · Range strip</h2>
+    <p class="sub">Header lockup, ecosystem cell, rail cell, partner-row cell. Hover cells to see leave fade.</p>
+    <div class="strip">
+      <div>🟧 Chameleon<br>Labs</div>
+      <div>⁙⁙ Our Ecosystem</div>
+      <div>X · TG · M · IN</div>
+      <div>PNG / JPG / WEBP / CANVAS</div>
+    </div>
+    <div class="partners">
+      <div class="partner-title">Our Partners:</div>
+      <div class="partner-logo"><span>CHAINLINK</span><span>⬈</span></div>
+      <div class="partner-nav"><button class="arrow" type="button" aria-label="Previous">←</button><button class="arrow" type="button" aria-label="Next">→</button></div>
+    </div>
+  </section>
+</div>
+
+<script>
+  // Visible font health so a missing @font-face never fails silently again.
+  (function () {
+    var el = document.getElementById('font-status');
+    if (!el) return;
+    function report() {
+      try {
+        var labs = document.fonts.check('16px LabsAmiga') ? 'loaded ✓' : 'FALLBACK ✗ (check assets/fonts/LABSAmiga-Regular.woff)';
+        var mono = document.fonts.check('16px RobotoMono') ? 'loaded ✓' : 'FALLBACK ✗ (check assets/fonts/RobotoMono-*.ttf)';
+        var monoBold = document.fonts.check('700 16px RobotoMono') ? 'loaded ✓' : 'fallback ✗';
+        el.textContent = 'LabsAmiga 400: ' + labs + ' — RobotoMono 400: ' + mono + ' — RobotoMono 700: ' + monoBold;
+      } catch (e) {
+        el.textContent = 'Font API unavailable — inspect visually.';
+      }
+    }
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(report);
+      // Explicit loads catch 404s even before first paint uses them.
+      Promise.all([
+        document.fonts.load('16px LabsAmiga'),
+        document.fonts.load('16px RobotoMono'),
+        document.fonts.load('700 16px RobotoMono')
+      ]).then(report).catch(report);
+    } else {
+      el.textContent = 'Font API unavailable — inspect visually.';
+    }
+  })();
+
+  // Static preview only: chip toggle for feel, no conversion logic.
+  document.querySelectorAll('.chip:not(:disabled)').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.chip').forEach((b) => b.setAttribute('aria-pressed', 'false'));
+      btn.setAttribute('aria-pressed', 'true');
+    });
+  });
+
+  // Directional hover scramble, per-letter (vanilla + offline-safe).
+  // Ref constants: chars "021zrotxinsmopsweknm", text "{original}",
+  // speed 2, delimiter "", duration 0.8, leave 1.5x.
+  // Behavior: hover plays LEFT→RIGHT, mouse-leave replays RIGHT→LEFT.
+  // Smoothness fix: each character lives in its own fixed-width span measured
+  // from the original glyph, so scrambling changes glyphs but never line
+  // length or letter spacing (mirrors ref SplitText + width-lock recipe).
+  (function () {
+    if (!window.matchMedia('(min-width: 768px) and (hover: hover)').matches) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (window.innerWidth <= 767) return;
+
+    var GLYPHS = '021zrotxinsmopsweknm';
+    var GLYPHS_UPPER = '021ZROTXINSOPSEKN';
+    var DURATION = 800;
+    var LEAVE_SCALE = 1.5;
+    var LTR = 1; // reveal sweeps left → right
+    var RTL = -1; // reveal sweeps right → left
+
+    function pick(pool) { return pool[(Math.random() * pool.length) | 0]; }
+    function preserved(ch) { return ch === ' ' || ch === '→'; }
+
+    function resolvedAt(i, len, revealed, dir) {
+      return dir === LTR ? i < revealed : i >= len - revealed;
+    }
+
+    function render(st, progress) {
+      var revealed = Math.floor(progress * st.original.length);
+      for (var i = 0; i < st.chars.length; i++) {
+        if (preserved(st.original[i])) continue;
+        st.chars[i].textContent = resolvedAt(i, st.original.length, revealed, st.dir)
+          ? st.original[i]
+          : pick(st.pool);
+      }
+    }
+
+    function settle(st) {
+      for (var i = 0; i < st.chars.length; i++) st.chars[i].textContent = st.chars[i].dataset.ch;
+    }
+
+    // Measure each original glyph and pin the span to that width.
+    function lockWidths(st) {
+      for (var i = 0; i < st.chars.length; i++) {
+        var span = st.chars[i];
+        span.style.width = '';
+        var w = span.getBoundingClientRect().width;
+        if (w > 0) span.style.width = w.toFixed(2) + 'px';
+      }
+    }
+
+    function lockAll(states) { states.forEach(lockWidths); }
+
+    function makeState(el, all) {
+      var original = el.getAttribute('data-text') || el.textContent;
+      // Title-only rule: capitalized text scrambles with capitals.
+      // Opt in via data-glyphs="upper" (currently just the big CHAMELEON).
+      var pool = el.getAttribute('data-glyphs') === 'upper' ? GLYPHS_UPPER : GLYPHS;
+      el.setAttribute('aria-label', original);
+      el.textContent = '';
+      var chars = [];
+      for (var i = 0; i < original.length; i++) {
+        var ch = original[i];
+        var span = document.createElement('span');
+        span.className = 'sc-char';
+        span.dataset.ch = ch;
+        span.textContent = ch === ' ' ? ' ' : ch;
+        el.appendChild(span);
+        chars.push(span);
+      }
+      var st = { el: el, original: original, pool: pool, chars: chars, raf: 0, progress: 1, dir: LTR };
+      all.push(st);
+      return st;
+    }
+
+    function cancel(st) {
+      if (st.raf) { cancelAnimationFrame(st.raf); st.raf = 0; }
+    }
+
+    function play(st, dir, durationMs) {
+      cancel(st);
+      st.dir = dir;
+      st.progress = 0;
+      render(st, 0);
+      if (durationMs <= 0) {
+        st.progress = 1;
+        settle(st);
+        return;
+      }
+      var start = performance.now();
+      function frame(now) {
+        var t = Math.min(1, (now - start) / durationMs);
+        st.progress = t;
+        if (t >= 1) {
+          settle(st);
+          st.raf = 0;
+          return;
+        }
+        render(st, t);
+        st.raf = requestAnimationFrame(frame);
+      }
+      st.raf = requestAnimationFrame(frame);
+    }
+
+    // Bind hover to the [scramble-link] wrapper (larger hit area) and
+    // animate every [scramble-text] inside it — hovering padding still fires.
+    var allStates = [];
+    document.querySelectorAll('[scramble-link]').forEach(function (link) {
+      var targets = link.hasAttribute('scramble-text')
+        ? [link]
+        : Array.prototype.slice.call(link.querySelectorAll('[scramble-text]'));
+      if (!targets.length) return;
+      var states = targets.map(function (el) { return makeState(el, allStates); });
+      // Pin widths on next paint (original glyphs), then re-pin once webfonts land.
+      requestAnimationFrame(function () { lockAll(states); });
+      link.addEventListener('mouseenter', function () {
+        states.forEach(function (st) { play(st, LTR, DURATION); });
+      });
+      link.addEventListener('mouseleave', function () {
+        states.forEach(function (st) { play(st, RTL, Math.round(DURATION / LEAVE_SCALE)); });
+      });
+    });
+
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(function () { lockAll(allStates); });
+    }
+    // Re-measure on resize while idle so fixed boxes track the new size.
+    var resizeTimer = 0;
+    window.addEventListener('resize', function () {
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(function () {
+        allStates.forEach(function (st) { if (!st.raf) lockWidths(st); });
+      }, 200);
+    });
+  })();
+</script>
+</body>
+</html>
