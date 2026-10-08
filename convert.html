@@ -1,1 +1,126 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Chameleon — Convert</title><link rel="stylesheet" href="css/style.css"></head><body><div class="wrap"><h1>Convert (stub)</h1><p>Hour 4: page exists, real converter lands in hour 6.</p><a href="index.html">Back</a></div></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Chameleon — Convert a PNG</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="pg" style="--o:#ff6a13">
+    <header class="nav">
+      <div class="wrap in" style="border:0">
+        <a class="brand" href="index.html">
+          <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true"><rect width="34" height="34" rx="9" style="fill:var(--o)"></rect><path d="M9 21c0-6 5-9 9-7s4 8-1 8-5-5-1-5" fill="none" stroke="#161616" stroke-width="2.6" stroke-linecap="round"></path><circle cx="24" cy="12" r="2" fill="#161616"></circle></svg>
+          Chameleon
+        </a>
+        <nav class="links" aria-label="Primary">
+          <a class="nl" href="index.html" scramble-link><span class="dekor dekor-tr" aria-hidden="true"></span><span class="dekor dekor-bl" aria-hidden="true"></span><span scramble-text data-text="Home">Home</span></a>
+          <a class="nl" href="convert.html" scramble-link><span class="dekor dekor-tr" aria-hidden="true"></span><span class="dekor dekor-bl" aria-hidden="true"></span><span scramble-text data-text="Convert">Convert</span></a>
+          <a class="nl" href="faq.html" scramble-link><span class="dekor dekor-tr" aria-hidden="true"></span><span class="dekor dekor-bl" aria-hidden="true"></span><span scramble-text data-text="FAQ">FAQ</span></a>
+        </nav>
+        <a class="btn" href="#convert">Convert now</a>
+      </div>
+    </header>
+    <main>
+      <div class="hb"><section class="wrap cols hero2" id="convert">
+        <h1 class="disp" scramble-link><span scramble-text data-text="Convert your PNG" data-glyphs="upper" title="Hover to scramble">Convert your PNG</span></h1>
+        <div class="cols2">
+          <div class="main"><div class="panel c">
+            <div class="steps" role="list" aria-label="Progress">
+              <div class="st past" role="listitem">01 Drop</div><div class="st on" role="listitem">02 Choose</div><div class="st" role="listitem">03 Convert</div><div class="st" role="listitem">04 Download</div>
+            </div>
+            <div class="fcard">
+              <div class="badge">PNG</div>
+              <div style="flex:1;min-width:0"><div class="nm">logo.png</div><div class="cap">Image &middot; 842 KB</div></div>
+              <button class="link" type="button">Change file</button>
+            </div>
+            <div class="blk">
+              <span class="cap">Convert to</span>
+              <div class="t6" role="group" aria-label="Convert to"><button class="tile" type="button" aria-pressed="false" data-f="JPG">JPG</button><button class="tile on" type="button" aria-pressed="true" data-f="WEBP">WEBP</button><button class="tile" type="button" aria-pressed="false" data-f="GIF">GIF</button><button class="tile" type="button" aria-pressed="false" data-f="SVG">SVG</button><button class="tile" type="button" aria-pressed="false" data-f="AVIF">AVIF</button><button class="tile" type="button" aria-pressed="false" data-f="HEIC">HEIC</button></div>
+              <p class="hint" id="hint">WEBP keeps transparency and is usually much smaller than PNG.</p>
+            </div>
+            <div class="blk">
+              <span class="cap">Quality</span>
+              <div class="q"><input id="q" type="range" min="1" max="100" value="82" aria-label="Quality"><strong id="qv">82</strong></div>
+            </div>
+            <div class="go">
+              <span class="cap" id="eg">Estimated output &middot; ~296 KB</span>
+              <button class="btn" type="button" id="btn">Convert to WEBP &rarr;</button>
+            </div>
+          </div></div>
+          <aside class="side"><div class="panel c"><div class="cap" style="margin-bottom:8px">Readout</div><div class="rd"><span>Source</span><span>logo.png</span></div><div class="rd"><span>Size</span><span>842 KB</span></div><div class="rd"><span>Target</span><span id="tr">WEBP</span></div><div class="rd"><span>Quality</span><span id="qr">82</span></div><div class="rd"><span>Est. output</span><span id="er">~296 KB</span></div></div>
+            <div class="panel c card"><div class="cap">Before &amp; after</div>
+              <div class="ba"><div class="bh"><span>PNG &middot; Original</span><span>842 KB</span></div><div class="bar"><i style="width:100%"></i></div></div>
+              <div class="ba"><div class="bh"><span id="bl">WEBP &middot; Estimated</span><span id="bs">~296 KB</span></div><div class="bar a"><i id="bar" style="width:35%"></i></div></div>
+              <div class="sv"><span class="disp" style="font-size:32px" id="pc">65%</span><span class="cap" id="pw">smaller</span></div>
+            </div></aside>
+        </div>
+      </section></div>
+    </main>
+    <footer class="ft">
+      <div class="wrap">
+        <div class="fgrid">
+          <div>
+            <a class="brand" href="index.html" style="color:#f6f6f6">
+              <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true"><rect width="34" height="34" rx="9" style="fill:var(--o)"></rect><path d="M9 21c0-6 5-9 9-7s4 8-1 8-5-5-1-5" fill="none" stroke="#161616" stroke-width="2.6" stroke-linecap="round"></path><circle cx="24" cy="12" r="2" fill="#161616"></circle></svg>
+              Chameleon
+            </a>
+            <p style="max-width:300px;margin:16px 0 0;font-size:14px;color:#bdbdbd">A calm, fast file converter that adapts to whatever you drop in.</p>
+          </div>
+          <div><div class="fh">Product</div><a class="fl" href="index.html#formats">Formats</a><a class="fl" href="index.html#how">How it works</a><a class="fl" href="faq.html">FAQ</a></div>
+          <div><div class="fh">Company</div><a class="fl" href="#">About</a><a class="fl" href="#">Blog</a><a class="fl" href="#">Contact</a></div>
+          <div><div class="fh">Legal</div><a class="fl" href="#">Privacy</a><a class="fl" href="#">Terms</a></div>
+        </div>
+        <div class="mark disp" scramble-link scramble-text data-text="Chameleon" data-glyphs="upper" title="Hover to scramble">Chameleon</div>
+        <div class="copy"><span>© 2026 CHAMELEON. ALL RIGHTS RESERVED.</span><span>MADE FOR EVERY FORMAT</span></div>
+      </div>
+    </footer>
+  </div>
+
+  <script type="module">
+    import { initScramble } from "./js/scramble.js";
+    initScramble();
+    // Paint the overscroll canvas to match the end you're resting at.
+    // (Bounce areas use the html background in every browser, so flip it on scroll.)
+    // Wide 200px threshold: bounce can only start from the true max, and this
+    // stays correct when webfonts swap in late and grow the document under you.
+    const root = document.documentElement;
+    const paintEdge = () => {
+      const max = document.body.scrollHeight - window.innerHeight;
+      root.dataset.edge = max > 0 && window.scrollY >= max - 200 ? "bottom" : "top";
+    };
+    addEventListener("scroll", () => requestAnimationFrame(paintEdge), { passive: true });
+    addEventListener("resize", paintEdge);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(paintEdge);
+    if ("ResizeObserver" in window) new ResizeObserver(paintEdge).observe(document.body);
+    paintEdge();
+  </script>
+  <script>
+  (function(){
+  var W={JPG:.45,WEBP:.35,GIF:.8,SVG:.3,AVIF:.25,HEIC:.4},SRC=842,BASE=1.2,t='WEBP';
+  var H={WEBP:'WEBP keeps transparency and is usually much smaller than PNG.',JPG:'JPG is smaller still, but it drops transparency.',GIF:'GIF supports 256 colours and simple animation.',SVG:'SVG is vector, so it suits simple logos and shapes.',AVIF:'AVIF is usually the smallest, but a few older apps cannot open it.',HEIC:'HEIC is compact and works best on Apple devices.'};
+  var q=document.getElementById('q'),tiles=[].slice.call(document.querySelectorAll('.tile'));
+  function $(i){return document.getElementById(i)}
+  function fmt(k){return k>=1000?(k/1000).toFixed(1)+' MB':Math.round(k)+' KB'}
+  function upd(){
+  var v=+q.value,est=SRC*W[t]/BASE*(0.4+0.98*v/100),pct=Math.round((1-est/SRC)*100);
+  $('qv').textContent=v;$('qr').textContent=v;$('tr').textContent=t;
+  $('er').textContent='~'+fmt(est);$('bs').textContent='~'+fmt(est);
+  $('eg').innerHTML='Estimated output &middot; ~'+fmt(est);
+  $('btn').innerHTML='Convert to '+t+' &rarr;';
+  $('bl').innerHTML=t+' &middot; Estimated';
+  $('bar').style.width=Math.min(100,est/SRC*100)+'%';
+  $('pc').textContent=Math.abs(pct)+'%';$('pw').textContent=pct>=0?'smaller':'larger';
+  $('hint').textContent=H[t];
+  }
+  tiles.forEach(function(b){b.addEventListener('click',function(){
+  t=b.getAttribute('data-f');
+  tiles.forEach(function(x){var on=x===b;x.classList.toggle('on',on);x.setAttribute('aria-pressed',on)});
+  upd();
+  })});
+  q.addEventListener('input',upd);
+  })();
+  </script>
+</body>
+</html>
