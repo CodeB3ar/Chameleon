@@ -9,6 +9,7 @@
 const GLYPHS_LOWER = "021zrotxinsmopsweknm";
 const GLYPHS_UPPER = "021ZROTXINSOPSEKN";
 const DURATION_IN = 800;
+const DURATION_AUTO = 1200;
 const DURATION_OUT = Math.round(DURATION_IN / 1.5);
 const LTR = 1;
 const RTL = -1;
@@ -77,11 +78,13 @@ function run(state, dir, ms) {
 }
 
 export function initScramble() {
-  if (!window.matchMedia("(min-width: 768px) and (hover: hover)").matches) return;
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  if (window.innerWidth <= 767) return;
+
+  const hoverable =
+    window.matchMedia("(min-width: 768px) and (hover: hover)").matches && window.innerWidth > 767;
 
   const all = [];
+  const autoplayStates = [];
 
   document.querySelectorAll("[scramble-link]").forEach((link) => {
     const targets = link.hasAttribute("scramble-text")
@@ -109,9 +112,34 @@ export function initScramble() {
     });
 
     requestAnimationFrame(() => states.forEach(pinWidths));
-    link.addEventListener("mouseenter", () => states.forEach((s) => run(s, LTR, DURATION_IN)));
-    link.addEventListener("mouseleave", () => states.forEach((s) => run(s, RTL, DURATION_OUT)));
+    if (hoverable) {
+      link.addEventListener("mouseenter", () => states.forEach((s) => run(s, LTR, DURATION_IN)));
+      link.addEventListener("mouseleave", () => states.forEach((s) => run(s, RTL, DURATION_OUT)));
+    }
+
+    if (link.hasAttribute("data-scramble-autoplay")) {
+      let played = false;
+      const play = () => {
+        if (played) return;
+        played = true;
+        states.forEach((s, i) => setTimeout(() => run(s, LTR, DURATION_AUTO), i * 200));
+      };
+      autoplayStates.push(...states);
+      // Fire after first paint has settled so the intro is impossible to miss.
+      if (document.readyState === "complete") {
+        setTimeout(play, 800);
+      } else {
+        window.addEventListener("load", () => setTimeout(play, 800), { once: true });
+      }
+      setTimeout(play, 3500);
+    }
   });
+
+  if (autoplayStates.length && !window.replayScramble) {
+    window.replayScramble = () => {
+      autoplayStates.forEach((s, i) => setTimeout(() => run(s, LTR, DURATION_AUTO), i * 200));
+    };
+  }
 
   if (document.fonts && document.fonts.ready) {
     document.fonts.ready.then(() => all.forEach(pinWidths));

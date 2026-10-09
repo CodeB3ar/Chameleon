@@ -38,7 +38,7 @@ chameleon/
 ## Roadmap
 
 - [x] Homepage shell in offline style
-- [ ] Real image conversion (PNG / JPG / WebP, canvas-based, 100% local)
+- [x] Real image conversion (PNG / JPG / SVG / WEBP in, HEIC input-only, canvas-based, 100% local)
 - [ ] Batch download / save button
 - [ ] Document conversion stubs
 

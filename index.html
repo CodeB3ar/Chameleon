@@ -4,10 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Chameleon — Convert anything</title>
-  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/style.css?v=3" />
 </head>
 <body>
-  <div class="pg" style="--o:#ff6a13">
+  <div class="pg" data-theme="orange">
     <header class="nav">
       <div class="wrap in" style="border:0">
         <a class="brand" href="#">
@@ -24,47 +24,48 @@
     </header>
     <main>
       <div class="hb">
-        <section class="wrap cols hero" id="convert">
+        <section class="wrap cols hero" id="convert" data-theme-zone="orange">
           <i class="sq" style="top:28px;left:28px"></i><i class="sq" style="top:28px;right:28px"></i>
-          <h1 class="disp" style="margin-top:0" scramble-link><span scramble-text data-text="Convert" data-glyphs="upper" title="Hover to scramble">Convert</span><br /><span class="hl" scramble-text data-text="anything" data-glyphs="upper" title="Hover to scramble">anything</span></h1>
+          <h1 class="disp" style="margin-top:0" scramble-link data-scramble-autoplay><span scramble-text data-text="Convert" data-glyphs="upper" title="Hover to scramble">Convert</span><br /><span class="hl" scramble-text data-text="anything" data-glyphs="upper" title="Hover to scramble">anything</span></h1>
           <p class="sub">Drop in a file, pick a format, and Chameleon turns it into whatever you need. Images, audio, video and documents.</p>
           <div class="panel">
-            <div class="ph"><span class="cap">Step 01 — Drop a file</span><span class="cap">Ready</span></div>
-            <div class="drop">
+            <div class="ph"><span class="cap">Step 01 — Drop a file</span><span class="cap" id="status" role="status" aria-live="polite">No files selected yet.</span></div>
+            <div class="drop" id="drop" tabindex="0" role="button" aria-label="Drop image files here or press Enter to browse">
               <svg width="44" height="44" viewBox="0 0 44 44" fill="none" stroke="#161616" stroke-width="2.4" stroke-linecap="square" aria-hidden="true"><path d="M22 30V8M13 17l9-9 9 9M7 30v6h30v-6"></path></svg>
-              <strong>Drag &amp; drop your file here</strong>
+              <strong>Drag &amp; Drop your file here</strong>
               <span class="cap">or</span>
-              <button class="btn dk" type="button">Choose file</button>
+              <button class="btn dk" type="button" id="browse-btn">Choose file</button>
+              <input class="vh" id="file-input" type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp,image/heic,image/heif,.png,.jpg,.jpeg,.svg,.webp,.heic,.heif" multiple />
+              <span class="cap" id="file-info">No files selected yet.</span>
             </div>
-            <div class="row">
-              <div class="chips" role="group" aria-label="Convert to">
-                <span class="cap" style="margin-right:6px">Convert to</span>
-                <button class="chip on" type="button" aria-pressed="true">PNG</button>
-                <button class="chip" type="button" aria-pressed="false">JPG</button>
-                <button class="chip" type="button" aria-pressed="false">WEBP</button>
-                <button class="chip" type="button" aria-pressed="false">MP3</button>
-                <button class="chip" type="button" aria-pressed="false">MP4</button>
-                <button class="chip" type="button" aria-pressed="false">PDF</button>
+            <ul class="queue" id="queue" hidden></ul>
+            <div class="row home-row">
+              <div class="chips" role="group" aria-label="Works with" id="target-chips">
+                <span class="cap" style="margin-right:6px">Works with</span>
+                <button class="chip" type="button" data-family="images">Images</button>
+                <button class="chip" type="button" data-family="audio">Audio</button>
+                <button class="chip" type="button" data-family="video">Video</button>
               </div>
-              <button class="btn" type="button">Convert →</button>
+              <button class="btn" type="button" id="convert-btn" disabled>Convert →</button>
             </div>
           </div>
           <div class="cap" style="margin-top:24px">No sign-up · No install</div>
           <i class="sq" style="bottom:28px;left:28px"></i><i class="sq" style="bottom:28px;right:28px"></i>
         </section>
       </div>
-      <section class="wrap sec" id="formats" style="background:var(--bg)">
+      <section class="wrap sec" id="formats" data-theme-zone="teal">
         <div class="cap">02 / Supported formats</div>
         <h2 class="disp">A format for everything</h2>
         <p class="lead">Four families, dozens of formats, one drop zone. Chameleon picks sensible defaults so you rarely have to think about settings.</p>
         <div class="grid">
-          <article class="cell"><div class="num">01</div><h3>Images</h3><p>Resize-safe conversions that keep transparency and colour intact.</p><div class="tags"><span class="tag">PNG</span><span class="tag">JPG</span><span class="tag">WEBP</span><span class="tag">GIF</span><span class="tag">SVG</span><span class="tag">AVIF</span><span class="tag">HEIC</span></div></article>
-          <article class="cell"><div class="num">02</div><h3>Audio</h3><p>Lossless to compressed and back, with clean metadata handling.</p><div class="tags"><span class="tag">MP3</span><span class="tag">WAV</span><span class="tag">FLAC</span><span class="tag">AAC</span><span class="tag">OGG</span><span class="tag">M4A</span></div></article>
-          <article class="cell"><div class="num">03</div><h3>Video</h3><p>Change containers or extract a clip without a timeline editor.</p><div class="tags"><span class="tag">MP4</span><span class="tag">MOV</span><span class="tag">WEBM</span><span class="tag">MKV</span><span class="tag">AVI</span><span class="tag">GIF</span></div></article>
-          <article class="cell"><div class="num">04</div><h3>Documents</h3><p>Move between office, ebook and plain-text formats with layout kept.</p><div class="tags"><span class="tag">PDF</span><span class="tag">DOCX</span><span class="tag">TXT</span><span class="tag">RTF</span><span class="tag">EPUB</span><span class="tag">MD</span></div></article>
+          <article class="cell"><div class="num">01</div><h3>Images</h3><p>Resize-safe conversions that keep transparency and colour intact.</p><div class="tags tags-top"><span class="tag">PNG</span><span class="tag">JPG</span><span class="tag">SVG</span></div><div class="tags"><span class="tag">WEBP</span><span class="tag">HEIC</span></div></article>
+          <article class="cell"><div class="num">02</div><h3>Audio</h3><p>Lossless to compressed and back, with clean metadata handling.</p><div class="tags tags-top"><span class="tag">MP3</span><span class="tag">WAV</span><span class="tag">AAC</span></div><div class="tags"><span class="tag">OGG</span><span class="tag">M4A</span><span class="tag">FLAC</span></div></article>
+          <article class="cell"><div class="num">03</div><h3>Video</h3><p>Change containers or extract a clip without a timeline editor.</p><div class="tags tags-top"><span class="tag">MP4</span><span class="tag">MOV</span><span class="tag">MKV</span></div><div class="tags"><span class="tag">AVI</span><span class="tag">GIF</span><span class="tag">WEBM</span></div></article>
+          <article class="cell"><div class="num">04</div><h3>Documents</h3><p>Move between office, ebook and plain-text formats with layout kept.</p><div class="tags tags-top"><span class="tag">MD</span><span class="tag">PDF</span><span class="tag">TXT</span></div><div class="tags"><span class="tag">RTF</span><span class="tag">DOCX</span><span class="tag">EPUB</span></div></article>
         </div>
       </section>
       <section class="wrap sec" id="how">
+        <div id="how-steps" data-theme-zone="purple">
         <div class="cap">03 / How it works</div>
         <h2 class="disp">Three steps. That's it.</h2>
         <div class="grid">
@@ -72,7 +73,8 @@
           <article class="cell"><div class="num">02</div><h3>Choose</h3><p>Pick the format you want from the list. Chameleon suggests the best fit for your file.</p></article>
           <article class="cell"><div class="num">03</div><h3>Download</h3><p>Grab the converted file and get on with your day.</p></article>
         </div>
-        <div class="cta" id="faq">
+        </div>
+        <div class="cta cta-rainbow" id="faq" data-theme-zone="lime">
           <h3 class="disp">Ready when you are</h3>
           <a class="btn dk" href="convert.html">Start converting →</a>
         </div>
@@ -98,23 +100,6 @@
     </footer>
   </div>
 
-  <script type="module">
-    import { initScramble } from "./js/scramble.js";
-    initScramble();
-    // Paint the overscroll canvas to match the end you're resting at.
-    // (Bounce areas use the html background in every browser, so flip it on scroll.)
-    // Wide 200px threshold: bounce can only start from the true max, and this
-    // stays correct when webfonts swap in late and grow the document under you.
-    const root = document.documentElement;
-    const paintEdge = () => {
-      const max = document.body.scrollHeight - window.innerHeight;
-      root.dataset.edge = max > 0 && window.scrollY >= max - 200 ? "bottom" : "top";
-    };
-    addEventListener("scroll", () => requestAnimationFrame(paintEdge), { passive: true });
-    addEventListener("resize", paintEdge);
-    if (document.fonts && document.fonts.ready) document.fonts.ready.then(paintEdge);
-    if ("ResizeObserver" in window) new ResizeObserver(paintEdge).observe(document.body);
-    paintEdge();
-  </script>
+  <script type="module" src="./js/home.js"></script>
 </body>
 </html>
