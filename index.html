@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Chameleon — Convert anything</title>
-  <link rel="stylesheet" href="css/style.css?v=4" />
+  <link rel="stylesheet" href="css/style.css?v=11" />
 </head>
 <body>
   <div class="pg" data-theme="orange">
@@ -30,12 +30,12 @@
           <p class="sub">Drop in a file, pick a format, and Chameleon turns it into whatever you need. Images, audio, video and documents.</p>
           <div class="panel">
             <div class="ph"><span class="cap">Step 01 — Drop a file</span><span class="cap" id="status" role="status" aria-live="polite">No files selected yet.</span></div>
-            <div class="drop" id="drop" tabindex="0" role="button" aria-label="Drop image or audio files here or press Enter to browse">
+            <div class="drop" id="drop" tabindex="0" role="button" aria-label="Drop image, audio or document files here or press Enter to browse">
               <svg width="44" height="44" viewBox="0 0 44 44" fill="none" stroke="#161616" stroke-width="2.4" stroke-linecap="square" aria-hidden="true"><path d="M22 30V8M13 17l9-9 9 9M7 30v6h30v-6"></path></svg>
               <strong>Drag &amp; Drop your file here</strong>
               <span class="cap">or</span>
               <button class="btn dk" type="button" id="browse-btn">Choose file</button>
-              <input class="vh" id="file-input" type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp,image/heic,image/heif,audio/mpeg,audio/wav,audio/flac,audio/aac,audio/ogg,audio/mp4,audio/webm,.png,.jpg,.jpeg,.svg,.webp,.heic,.heif,.mp3,.wav,.flac,.aac,.ogg,.oga,.opus,.m4a,.weba,.3gp" multiple />
+              <input class="vh" id="file-input" type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp,image/heic,image/heif,audio/mpeg,audio/wav,audio/aac,audio/ogg,audio/mp4,audio/webm,text/plain,text/markdown,text/x-markdown,application/rtf,text/rtf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/epub+zip,.png,.jpg,.jpeg,.svg,.webp,.heic,.heif,.mp3,.wav,.aac,.ogg,.oga,.opus,.m4a,.weba,.3gp,.txt,.md,.markdown,.rtf,.pdf,.docx,.epub" multiple />
               <span class="cap" id="file-info">No files selected yet.</span>
             </div>
             <ul class="queue" id="queue" hidden></ul>
@@ -44,6 +44,7 @@
                 <span class="cap" style="margin-right:6px">Works with</span>
                 <button class="chip" type="button" data-family="images">Images</button>
                 <button class="chip" type="button" data-family="audio">Audio</button>
+                <button class="chip" type="button" data-family="documents">Documents</button>
                 <button class="chip" type="button" data-family="video">Video</button>
               </div>
               <button class="btn" type="button" id="convert-btn" disabled>Convert →</button>
@@ -59,7 +60,7 @@
         <p class="lead">Four families, dozens of formats, one drop zone. Chameleon picks sensible defaults so you rarely have to think about settings.</p>
         <div class="grid">
           <article class="cell"><div class="num">01</div><h3>Images</h3><p>Resize-safe conversions that keep transparency and colour intact.</p><div class="tags tags-top"><span class="tag">PNG</span><span class="tag">JPG</span><span class="tag">SVG</span></div><div class="tags"><span class="tag">WEBP</span><span class="tag">HEIC</span></div></article>
-          <article class="cell"><div class="num">02</div><h3>Audio</h3><p>Lossless to compressed and back, with clean metadata handling.</p><div class="tags tags-top"><span class="tag">MP3</span><span class="tag">WAV</span><span class="tag">AAC</span></div><div class="tags"><span class="tag">OGG</span><span class="tag">M4A</span><span class="tag">FLAC</span></div></article>
+          <article class="cell"><div class="num">02</div><h3>Audio</h3><p>Lossless to compressed and back, with clean metadata handling.</p><div class="tags tags-top"><span class="tag">MP3</span><span class="tag">WAV</span><span class="tag">AAC</span></div><div class="tags"><span class="tag">OGG</span><span class="tag">M4A</span></div></article>
           <article class="cell"><div class="num">03</div><h3>Video</h3><p>Change containers or extract a clip without a timeline editor.</p><div class="tags tags-top"><span class="tag">MP4</span><span class="tag">MOV</span><span class="tag">MKV</span></div><div class="tags"><span class="tag">AVI</span><span class="tag">GIF</span><span class="tag">WEBM</span></div></article>
           <article class="cell"><div class="num">04</div><h3>Documents</h3><p>Move between office, ebook and plain-text formats with layout kept.</p><div class="tags tags-top"><span class="tag">MD</span><span class="tag">PDF</span><span class="tag">TXT</span></div><div class="tags"><span class="tag">RTF</span><span class="tag">DOCX</span><span class="tag">EPUB</span></div></article>
         </div>
@@ -100,6 +101,6 @@
     </footer>
   </div>
 
-  <script type="module" src="./js/home.js?v=1"></script>
+  <script type="module" src="./js/home.js?v=4"></script>
 </body>
 </html>

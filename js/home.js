@@ -6,7 +6,7 @@
    files stages and navigates automatically. Everything stays local. */
 
 import { initScramble } from "./scramble.js";
-import { isSupported, stubKind, fmtSize, IMAGE_TARGETS, AUDIO_TARGETS, familyOf } from "./convert.js";
+import { isSupported, stubKind, fmtSize, IMAGE_TARGETS, AUDIO_TARGETS, DOC_TARGETS, familyOf } from "./convert.js?v=2";
 import { pushHistory } from "./history.js";
 import { putStaged } from "./store.js";
 
@@ -22,7 +22,13 @@ const statusEl = document.getElementById("status");
 const convertBtn = document.getElementById("convert-btn");
 const chipsEl = document.getElementById("target-chips");
 
-const FAMILIES = ["images", "audio", "video"];
+const FAMILIES = ["images", "audio", "documents", "video"];
+
+// Home shows trimmed chip rows so each fits one line: docs drop RTF/EPUB,
+// audio drops OGG. Everything stays fully convertible via convert.html
+// tiles — the convert page keeps using the full DOC_TARGETS/AUDIO_TARGETS.
+const HOME_DOC_TARGETS = ["txt", "md", "pdf", "docx"];
+const HOME_AUDIO_TARGETS = ["mp3", "wav", "aac", "m4a"];
 
 function cap1(s) {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -65,7 +71,7 @@ function renderTargets() {
   chipsEl.setAttribute("aria-label", "Convert to");
   chipsEl.append(label);
   const fam = queueFamily();
-  const list = fam === "audio" ? AUDIO_TARGETS : IMAGE_TARGETS;
+  const list = fam === "audio" ? HOME_AUDIO_TARGETS : fam === "document" ? HOME_DOC_TARGETS : IMAGE_TARGETS;
   for (const f of list) {
     const on = f === target;
     const b = document.createElement("button");
@@ -106,16 +112,17 @@ function describeRejection(file) {
   if (file.size > MAX_BYTES) return `${file.name}: over 50 MB — pick a smaller file.`;
   const seenType = String(file.type || "") || "unknown type";
   const kind = stubKind(file);
-  if (kind === "video" || kind === "document")
-    return `${file.name}: ${kind} conversion is coming soon — images and audio for now. (saw ${seenType})`;
+  if (kind === "video")
+    return `${file.name}: video conversion is coming soon — images, audio and documents for now. (saw ${seenType})`;
   if (kind === "image")
     return `${file.name}: that image type isn't supported yet — PNG / JPG / SVG / WEBP / HEIC only. (saw ${seenType})`;
-  return `${file.name}: unsupported file — images (PNG / JPG / SVG / WEBP / HEIC) or audio (MP3 / WAV / FLAC / AAC / OGG / M4A) only. (saw ${seenType})`;
+  return `${file.name}: unsupported file — images (PNG / JPG / SVG / WEBP / HEIC), audio (MP3 / WAV / OGG / AAC / M4A) or documents (TXT / MD / RTF / PDF / DOCX / EPUB) only. (saw ${seenType})`;
 }
 
 function syncTargetToQueue() {
   const fam = queueFamily();
   if (fam === "audio" && !AUDIO_TARGETS.includes(target)) target = "mp3";
+  else if (fam === "document" && !DOC_TARGETS.includes(target)) target = "pdf";
   if ((fam === "image" || fam === "") && !IMAGE_TARGETS.includes(target)) target = "png";
 }
 
@@ -194,7 +201,7 @@ function renderQueue() {
       thumb.appendChild(img);
       thumb.classList.add("has-img");
     } else {
-      thumb.textContent = fam === "audio" ? String(file.name || "").split(".").pop().toUpperCase().slice(0, 4) || "AUD" : "IMG";
+      thumb.textContent = fam === "audio" || fam === "document" ? String(file.name || "").split(".").pop().toUpperCase().slice(0, 4) || "DOC" : "IMG";
       thumb.setAttribute("aria-hidden", "true");
     }
 
@@ -287,8 +294,8 @@ window.addEventListener("paste", (e) => {
 chipsEl.addEventListener("click", (e) => {
   const fam = e.target.closest("[data-family]");
   if (fam) {
-    if (fam.dataset.family === "images" || fam.dataset.family === "audio") openPicker();
-    else setStatus(`${cap1(fam.dataset.family)} conversion is coming soon — images and audio for now.`);
+    if (["images", "audio", "documents"].includes(fam.dataset.family)) openPicker();
+    else setStatus(`${cap1(fam.dataset.family)} conversion is coming soon — images, audio and documents for now.`);
     return;
   }
   const btn = e.target.closest(".chip[data-f]");

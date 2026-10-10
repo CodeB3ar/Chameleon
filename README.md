@@ -39,8 +39,10 @@ chameleon/
 
 - [x] Homepage shell in offline style
 - [x] Real image conversion (PNG / JPG / SVG / WEBP in, HEIC input-only, canvas-based, 100% local)
-- [ ] Batch download / save button
-- [ ] Document conversion stubs
+- [x] Real audio conversion (MP3 / WAV / OGG / AAC / M4A, Web Audio decode, hand-rolled WAV, vendored LAME MP3, 100% local)
+- [x] Real document conversion (TXT / MD / RTF / PDF / DOCX / EPUB, hand-rolled text transforms + PDF writer + ZIP, vendored pdf.js text extraction + tesseract OCR for scanned PDFs, 100% local)
+- [x] Batch download / save button
+- [ ] Video conversion stubs
 
 ## License
 

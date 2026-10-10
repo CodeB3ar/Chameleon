@@ -1,9 +1,12 @@
 /* Chameleon — file support checks + shared formatting (home v1).
    Images convert locally via canvas. Audio converts locally via Web Audio
-   decode + WAV PCM / MediaRecorder / vendored MP3 encode. Video/docs are stubs. */
+   decode + WAV PCM / MediaRecorder / vendored MP3 encode. Documents convert
+   locally via js/encode-doc.js (text transforms + hand-rolled PDF writer +
+   vendored PDF text extraction). Video stubs only. */
 
 export const IMAGE_TARGETS = ["png", "jpg", "svg", "webp"];
-export const AUDIO_TARGETS = ["mp3", "wav", "flac", "aac", "ogg", "m4a"];
+export const AUDIO_TARGETS = ["mp3", "wav", "ogg", "aac", "m4a"];
+export const DOC_TARGETS = ["txt", "md", "rtf", "pdf", "docx", "epub"];
 
 const IMAGE_TYPES = [
   "image/png",
@@ -23,8 +26,6 @@ const AUDIO_TYPES = [
   "audio/wav",
   "audio/x-wav",
   "audio/wave",
-  "audio/flac",
-  "audio/x-flac",
   "audio/aac",
   "audio/aacp",
   "audio/ogg",
@@ -36,13 +37,23 @@ const AUDIO_TYPES = [
   "audio/3gpp",
   "audio/3gpp2",
 ];
-const AUDIO_EXTS = [".mp3", ".wav", ".flac", ".aac", ".ogg", ".oga", ".opus", ".m4a", ".weba", ".3gp"];
+const AUDIO_EXTS = [".mp3", ".wav", ".aac", ".ogg", ".oga", ".opus", ".m4a", ".weba", ".3gp"];
+const DOC_TYPES = [
+  "text/plain",
+  "text/markdown",
+  "text/x-markdown",
+  "application/rtf",
+  "text/rtf",
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/epub+zip",
+];
+const DOC_EXTS = [".txt", ".md", ".markdown", ".rtf", ".pdf", ".docx", ".epub"];
 
 // Extensions we can explicitly name as "coming soon" instead of "unsupported".
 // NOTE: GIF is intentionally not listed anywhere — it is unsupported.
 const STUB_EXTS = [
   ".mp4", ".mov", ".webm", ".mkv", ".avi",
-  ".pdf", ".docx", ".txt", ".rtf", ".epub", ".md",
   ".bmp", ".tiff", ".tif",
 ];
 
@@ -57,10 +68,12 @@ export function isSupported(file) {
   const t = String(file.type || "").toLowerCase();
   if (IMAGE_TYPES.includes(t)) return true;
   if (AUDIO_TYPES.includes(t)) return true;
+  if (DOC_TYPES.includes(t)) return true;
   const name = String(file.name || "").toLowerCase();
   return (
     IMAGE_EXTS.some((ext) => name.endsWith(ext)) ||
-    AUDIO_EXTS.some((ext) => name.endsWith(ext))
+    AUDIO_EXTS.some((ext) => name.endsWith(ext)) ||
+    DOC_EXTS.some((ext) => name.endsWith(ext))
   );
 }
 
@@ -70,7 +83,6 @@ export function stubKind(file) {
   if (!ext) return "";
   if (!STUB_EXTS.includes(ext)) return "";
   if ([".mp4", ".mov", ".webm", ".mkv", ".avi"].includes(ext)) return "video";
-  if ([".pdf", ".docx", ".txt", ".rtf", ".epub", ".md"].includes(ext)) return "document";
   return "image";
 }
 
@@ -86,6 +98,8 @@ export function familyOf(file) {
     return "image";
   if (AUDIO_TYPES.includes(t) || AUDIO_EXTS.some((e) => String(file.name || "").toLowerCase().endsWith(e)))
     return "audio";
+  if (DOC_TYPES.includes(t) || DOC_EXTS.some((e) => String(file.name || "").toLowerCase().endsWith(e)))
+    return "document";
   if (isSupported(file)) return "image";
   const kind = stubKind(file);
   if (kind) return kind;
@@ -105,7 +119,11 @@ export function isKnown(file) {
 export const CONVERTIBLE_TARGETS = ["PNG", "JPG", "SVG", "WEBP"];
 // Audio targets encodable via encode-audio.js (WAV always; the rest gated
 // per-browser by supportsAudioTarget(), mirroring supportsWebp()).
-export const AUDIO_CONVERTIBLE_TARGETS = ["MP3", "WAV", "FLAC", "AAC", "OGG", "M4A"];
+export const AUDIO_CONVERTIBLE_TARGETS = ["MP3", "WAV", "OGG", "AAC", "M4A"];
+// Document targets encodable via encode-doc.js (TXT/MD/RTF/PDF always;
+// DOCX/EPUB need ZIP capability; PDF *input* needs vendored pdf.js).
+// Gating lives in supportsDocTarget(), mirroring supportsAudioTarget().
+export const DOC_CONVERTIBLE_TARGETS = ["TXT", "MD", "RTF", "PDF", "DOCX", "EPUB"];
 
 /**
  * Per-family target options for custom mode.
@@ -114,9 +132,10 @@ export const AUDIO_CONVERTIBLE_TARGETS = ["MP3", "WAV", "FLAC", "AAC", "OGG", "M
  */
 export function targetsFor(family) {
   if (family === "audio")
-    return ["MP3", "WAV", "OGG", "FLAC", "AAC", "M4A"].map((v) => ({ v, soon: false }));
+    return ["MP3", "WAV", "OGG", "AAC", "M4A"].map((v) => ({ v, soon: false }));
   if (family === "video") return ["MP4", "MOV", "WEBM"].map((v) => ({ v, soon: true, label: "soon" }));
-  if (family === "document") return ["PDF", "DOCX", "TXT"].map((v) => ({ v, soon: true, label: "soon" }));
+  if (family === "document")
+    return ["TXT", "MD", "RTF", "PDF", "DOCX", "EPUB"].map((v) => ({ v, soon: false }));
   return [
     { v: "PNG", soon: false },
     { v: "JPG", soon: false },

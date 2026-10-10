@@ -2,13 +2,13 @@
    Drop tab holds up to MAX_FILES uploads (1-2: long banners, 3+: grid).
    Choose tab lists files with a SHOW toggle: ALL FILES applies one target to
    everything (single family only); CUSTOM gives each file its own target.
-   Mixed families lock bulk and force custom. Non-image files list as stubs
-   (coming soon) and are skipped at convert. Convert runs every convertible
-   file sequentially; results list with per-file Download + Download all.
+   Mixed families lock bulk and force custom. Unrecognised files are rejected
+   at add; convertible files convert. Convert runs every convertible file
+   sequentially; results list with per-file Download + Download all.
    Everything stays on-device. */
 
 import { initScramble } from "./scramble.js";
-import { getStaged, stagedTargetFallback } from "./store.js";
+import { getStaged, stagedTargetFallback, clearStaged } from "./store.js";
 import {
   isSupported,
   stubKind,
@@ -20,8 +20,17 @@ import {
   defaultTargetFor,
   CONVERTIBLE_TARGETS,
   AUDIO_CONVERTIBLE_TARGETS,
-} from "./convert.js";
+  DOC_CONVERTIBLE_TARGETS,
+} from "./convert.js?v=2";
 import { decodeImage, encodeImage, supportsWebp, getImageDimensions, outName } from "./encode.js";
+import {
+  decodeDoc,
+  encodeDoc,
+  supportsDocTarget,
+  ensurePdf,
+  outNameDoc,
+  DOC_LOSSLESS_TARGETS,
+} from "./encode-doc.js?v=1";
 import {
   decodeAudio,
   encodeAudio,
@@ -38,13 +47,17 @@ import {
 const MAX_FILES = 10;
 const GRID_FROM = 3; // < GRID_FROM files: long banner; >= GRID_FROM: grid
 const REAL_TARGETS = ["PNG", "JPG", "SVG", "WEBP"];
-const REAL_AUDIO_TARGETS = ["MP3", "WAV", "OGG", "FLAC", "AAC", "M4A"];
+const REAL_AUDIO_TARGETS = ["MP3", "WAV", "OGG", "AAC", "M4A"];
+const REAL_DOC_TARGETS = ["TXT", "MD", "RTF", "PDF", "DOCX", "EPUB"];
 // Shell estimate weights (used until a real conversion measures bytes).
 // SVG wraps a PNG raster as base64, so it runs larger than the source.
 const WEIGHTS = { PNG: 1.0, JPG: 0.45, SVG: 1.35, WEBP: 0.35 };
-// Audio weights mirror the photo approach: lossy shrinks, WAV grows to PCM,
-// FLAC lands near the source. Quality scales lossy targets only.
-const AUDIO_WEIGHTS = { MP3: 0.32, AAC: 0.3, OGG: 0.27, M4A: 0.3, FLAC: 0.85, WAV: 1.4 };
+// Audio weights mirror the photo approach: lossy shrinks, WAV grows to PCM.
+// Quality scales lossy targets only (WAV ignores it, like PNG).
+const AUDIO_WEIGHTS = { MP3: 0.32, AAC: 0.3, OGG: 0.27, M4A: 0.3, WAV: 1.4 };
+// Document weights: markup/container overhead per target. Quality scales
+// PDF only (embedded-image fidelity); pure-text targets ignore it.
+const DOC_WEIGHTS = { TXT: 0.9, MD: 1.0, RTF: 1.25, PDF: 1.1, DOCX: 1.15, EPUB: 1.2 };
 const BASE = 1.2;
 
 const $ = (id) => document.getElementById(id);
@@ -67,6 +80,13 @@ const singleCard = $("single-card");
 const singleImg = $("single-img");
 const singleName = $("single-name");
 const singleMeta = $("single-meta");
+const singleAudio = $("single-audio");
+const singlePlayer = $("single-player");
+const ppToggle = $("pp-toggle");
+const ppCur = $("pp-cur");
+const ppSeek = $("pp-seek");
+const ppDur = $("pp-dur");
+const ppMute = $("pp-mute");
 const showBlk = $("show-blk");
 const modeAll = $("mode-all");
 const modeManual = $("mode-manual");
@@ -140,7 +160,8 @@ function setFormatTheme(fmt) {
   if (!pg) return;
   const map = {
     png: "png", jpg: "jpg", jpeg: "jpg", svg: "svg", webp: "webp",
-    mp3: "mp3", wav: "wav", ogg: "ogg", flac: "flac", aac: "aac", m4a: "m4a",
+    mp3: "mp3", wav: "wav", ogg: "ogg", aac: "aac", m4a: "m4a",
+    txt: "txt", md: "md", rtf: "rtf", pdf: "pdf", docx: "docx", epub: "epub",
   };
   const next = map[String(fmt || "").toLowerCase()];
   if (!next) return;
@@ -163,11 +184,21 @@ function convertible(entry) {
   if (!entry) return false;
   if (entry.family === "image") return CONVERTIBLE_TARGETS.includes(entry.target);
   if (entry.family === "audio") return AUDIO_CONVERTIBLE_TARGETS.includes(entry.target);
+  if (entry.family === "document") return DOC_CONVERTIBLE_TARGETS.includes(entry.target);
   return false;
 }
 
 function isAudioEntry(entry) {
   return !!entry && entry.family === "audio";
+}
+
+function isDocEntry(entry) {
+  return !!entry && entry.family === "document";
+}
+
+/** Quality slider is meaningless for pure-text doc targets (mirrors lossless). */
+function docIgnoresQuality(entry) {
+  return isDocEntry(entry) && DOC_LOSSLESS_TARGETS.includes(entry.target);
 }
 
 function convertibleCount() {
@@ -196,9 +227,12 @@ function syncMode() {
     modeNote.hidden = false;
   }
   // Tiles/quality drive bulk conversion; hide them when bulk can't act.
-  const showBulkCtrls = mode === "bulk" && ok && files.some((f) => convertible(f) || f.family === "image" || f.family === "audio");
+  const showBulkCtrls = mode === "bulk" && ok && files.some((f) => convertible(f) || f.family === "image" || f.family === "audio" || f.family === "document");
   tilesBlk.hidden = !showBulkCtrls && !(mode === "manual" && files.length === 1);
-  qBlk.hidden = convertibleCount() === 0;
+  // Text has no quality axis — hide the slider when every convertible job
+  // ignores it (mirrors how lossless targets ignore quality).
+  const jobs = files.filter(convertible);
+  qBlk.hidden = jobs.length === 0 || jobs.every(docIgnoresQuality);
   // Multi-file: drop the per-file readout, keep the before/after card top-right at natural size.
   const multi = files.length > 1;
   readout.hidden = multi;
@@ -239,7 +273,7 @@ function thumbUrl(blob, type, name) {
     [".png", ".jpg", ".jpeg", ".svg", ".webp", ".heic", ".heif"].some((e) => n.endsWith(e));
   const isAudio =
     t.startsWith("audio/") ||
-    [".mp3", ".wav", ".flac", ".aac", ".ogg", ".oga", ".opus", ".m4a", ".weba", ".3gp"].some((e) => n.endsWith(e));
+    [".mp3", ".wav", ".aac", ".ogg", ".oga", ".opus", ".m4a", ".weba", ".3gp"].some((e) => n.endsWith(e));
   if (!isImg && !isAudio) return null;
   try {
     return URL.createObjectURL(blob);
@@ -269,6 +303,12 @@ function estimateKBFor(entry) {
     const qf = LOSSLESS_TARGETS.includes(entry.target) ? 1 : 0.4 + (0.98 * v) / 100;
     return ((srcKB * w) / BASE) * qf * 1.35;
   }
+  if (isDocEntry(entry)) {
+    const w = DOC_WEIGHTS[entry.target] || 1.0;
+    // Only PDF output has a fidelity axis (embedded images); text ignores it.
+    const qf = entry.target === "PDF" ? 0.6 + (0.6 * v) / 100 : 1;
+    return ((srcKB * w) / BASE) * qf;
+  }
   return (srcKB * (WEIGHTS[entry.target] || 0.4)) / BASE * (0.4 + (0.98 * v) / 100);
 }
 
@@ -293,6 +333,7 @@ function onTileClick(fmt) {
       if (f.family !== fam) return;
       if (fam === "image" && REAL_TARGETS.includes(target)) f.target = target;
       if (fam === "audio" && REAL_AUDIO_TARGETS.includes(target)) f.target = target;
+      if (fam === "document" && REAL_DOC_TARGETS.includes(target)) f.target = target;
     });
   } else if (file.family === fam) {
     file.target = target;
@@ -307,7 +348,16 @@ function onTileClick(fmt) {
 
 function renderTiles() {
   const fam = tilesFamily();
-  const defs = fam === "audio" ? REAL_AUDIO_TARGETS : [...REAL_TARGETS, "HEIC"];
+  const defs = fam === "audio" ? REAL_AUDIO_TARGETS : fam === "document" ? REAL_DOC_TARGETS : [...REAL_TARGETS, "HEIC"];
+  // Scale the grid to the tile count so every family fits one row
+  // (documents render six tiles where the CSS default holds five).
+  // Small screens keep the CSS 3-column wrap — six cramped tiles help nobody.
+  try {
+    const narrow = window.matchMedia && window.matchMedia("(max-width:560px)").matches;
+    tilesEl.style.gridTemplateColumns = narrow ? "" : `repeat(${defs.length},minmax(0,1fr))`;
+  } catch {
+    // CSS default covers it
+  }
   tilesEl.innerHTML = "";
   defs.forEach((f) => {
     const b = document.createElement("button");
@@ -383,6 +433,16 @@ function syncTileAvailability() {
         labelTile(b, "NO SUPPORT");
       }
     });
+    return;
+  }
+  if (fam === "document") {
+    tiles.forEach((b) => {
+      if (!supportsDocTarget(b.dataset.f)) {
+        b.disabled = true;
+        b.title = `${b.dataset.f} needs ZIP support this browser lacks — TXT works everywhere.`;
+        labelTile(b, "NO SUPPORT");
+      }
+    });
   }
 }
 
@@ -392,7 +452,7 @@ function syncConvertBtn() {
   btn.innerHTML =
     files.length > 1 ? `Convert ${n} file${n === 1 ? "" : "s"} &rarr;` : `Convert to ${activeTarget()} &rarr;`;
   btn.title =
-    n === 0 ? "Nothing convertible yet — images convert to PNG / JPG / SVG / WEBP, audio to MP3 / WAV / OGG / FLAC / AAC / M4A." : "";
+    n === 0 ? "Nothing convertible yet — images convert to PNG / JPG / SVG / WEBP, audio to MP3 / WAV / OGG / AAC / M4A, documents to TXT / MD / RTF / PDF / DOCX / EPUB." : "";
 }
 
 function renderEstimate() {
@@ -551,34 +611,171 @@ function renderResults(failed = []) {
   er.textContent = fmtSize(totalOut);
 }
 
-/** Large preview card for the single-file case (image thumb or audio player). */
-function renderSingleCard() {
-  const show = files.length === 1 && !!file && (file.family === "image" || file.family === "audio");
-  singleCard.hidden = !show;
-  if (!show) return;
-  const entry = file;
-  const thumbBox = singleImg.parentElement;
-  singleName.textContent = entry.name;
-  singleName.title = entry.name;
-  let player = document.getElementById("single-audio");
-  const showAudio = entry.family === "audio";
-  if (player) player.hidden = !showAudio;
-  // Rebuild thumb so a previous HEIC fallback can't leak into the next file.
-  thumbBox.textContent = "";
-  if (showAudio) {
-    singleImg.hidden = true;
-    singleImg.removeAttribute("src");
-    const badge = document.createElement("span");
-    badge.className = "badge sm";
-    badge.textContent = srcExtOf(entry.name);
-    thumbBox.append(badge, singleImg);
-    if (player) {
+/* Custom audio preview player: the <audio> element is the hidden engine,
+   these controls drive it. Built once, bound once; renderSingleCard only
+   swaps the loaded URL (never rebuilds mid-playback). */
+let ppSrc = null;
+let ppSeeking = false;
+
+function ppFmt(sec) {
+  const s = Math.max(0, Math.floor(Number(sec) || 0));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function ppPaint() {
+  if (!singleAudio || !ppSeek) return;
+  const d = singleAudio.duration;
+  const ok = Number.isFinite(d) && d > 0;
+  if (ppDur) ppDur.textContent = ok ? ppFmt(d) : "0:00";
+  const c = singleAudio.currentTime || 0;
+  if (ppCur) ppCur.textContent = ppFmt(c);
+  if (!ppSeeking && ppSeek) {
+    const pct = ok ? Math.min(100, Math.max(0, (c / d) * 100)) : 0;
+    ppSeek.value = String(Math.round(pct * 10));
+    ppSeek.style.setProperty("--fill", pct + "%");
+  }
+}
+
+function ppSetIcon() {
+  if (!ppToggle || !singleAudio) return;
+  const playing = !singleAudio.paused && !singleAudio.ended;
+  ppToggle.textContent = playing ? "❚❚" : "▶";
+  ppToggle.setAttribute("aria-label", playing ? "Pause preview" : "Play preview");
+}
+
+function ppMutePaint() {
+  if (!ppMute || !singleAudio) return;
+  const muted = singleAudio.muted || singleAudio.volume === 0;
+  ppMute.textContent = muted ? "MUTED" : "MUTE";
+  ppMute.setAttribute("aria-pressed", String(muted));
+  ppMute.setAttribute("aria-label", muted ? "Unmute preview" : "Mute preview");
+}
+
+/** Load a preview URL into the engine (no-op when unchanged). */
+function ppLoad(url) {
+  if (!singleAudio) return;
+  if (ppSrc === (url || null)) return;
+  ppSrc = url || null;
+  try {
+    singleAudio.pause();
+  } catch {
+    // ignore
+  }
+  try {
+    if (ppSrc) singleAudio.src = ppSrc;
+    else {
+      singleAudio.removeAttribute("src");
+      singleAudio.load();
+    }
+  } catch {
+    // ignore
+  }
+  if (ppSeek) {
+    ppSeek.value = "0";
+    ppSeek.style.setProperty("--fill", "0%");
+  }
+  if (ppCur) ppCur.textContent = "0:00";
+  if (ppDur) ppDur.textContent = "0:00";
+  ppSetIcon();
+  ppMutePaint();
+}
+
+function ppStop() {
+  if (!singleAudio) return;
+  try {
+    singleAudio.pause();
+  } catch {
+    // ignore
+  }
+  ppLoad(null);
+  if (singlePlayer) singlePlayer.hidden = true;
+  ppSetIcon();
+}
+
+if (ppToggle && singleAudio) {
+  ppToggle.addEventListener("click", async () => {
+    if (!ppSrc) return;
+    try {
+      if (singleAudio.paused) await singleAudio.play();
+      else singleAudio.pause();
+    } catch {
+      // autoplay policy or revoked URL — icon stays on play
+    }
+    ppSetIcon();
+  });
+  singleAudio.addEventListener("play", ppSetIcon);
+  singleAudio.addEventListener("pause", ppSetIcon);
+  singleAudio.addEventListener("ended", ppSetIcon);
+  singleAudio.addEventListener("timeupdate", ppPaint);
+  singleAudio.addEventListener("loadedmetadata", ppPaint);
+  singleAudio.addEventListener("durationchange", ppPaint);
+}
+if (ppSeek && singleAudio) {
+  ppSeek.addEventListener("input", () => {
+    ppSeeking = true;
+    const pct = Number(ppSeek.value) / 10;
+    ppSeek.style.setProperty("--fill", Math.min(100, Math.max(0, pct)) + "%");
+    const d = singleAudio.duration;
+    if (Number.isFinite(d) && d > 0) ppCur.textContent = ppFmt((pct / 100) * d);
+  });
+  ppSeek.addEventListener("change", () => {
+    const d = singleAudio.duration;
+    if (Number.isFinite(d) && d > 0) {
       try {
-        if (player.getAttribute("src") !== entry.url) player.src = entry.url || "";
+        singleAudio.currentTime = (Math.min(1000, Math.max(0, Number(ppSeek.value))) / 1000) * d;
       } catch {
         // ignore
       }
     }
+    ppSeeking = false;
+    ppPaint();
+  });
+}
+if (ppMute && singleAudio) {
+  ppMute.addEventListener("click", () => {
+    try {
+      singleAudio.muted = !singleAudio.muted;
+      if (!singleAudio.muted && singleAudio.volume === 0) singleAudio.volume = 1;
+    } catch {
+      // ignore
+    }
+    ppMutePaint();
+  });
+}
+
+/** Large preview card: image thumb, audio player, or document ext badge. */
+function renderSingleCard() {
+  const show = files.length === 1 && !!file && (file.family === "image" || file.family === "audio" || file.family === "document");
+  singleCard.hidden = !show;
+  if (!show) {
+    ppStop();
+    return;
+  }
+  const entry = file;
+  const thumbBox = singleImg.parentElement;
+  singleName.textContent = entry.name;
+  singleName.title = entry.name;
+  const showAudio = entry.family === "audio";
+  const showDoc = entry.family === "document";
+  if (singlePlayer) singlePlayer.hidden = !showAudio;
+  if (!showAudio) ppStop();
+  // Rebuild thumb so a previous HEIC fallback can't leak into the next file.
+  thumbBox.textContent = "";
+  if (showDoc) {
+    singleImg.hidden = true;
+    singleImg.removeAttribute("src");
+    const badge = document.createElement("span");
+    badge.className = "badge lg";
+    badge.textContent = srcExtOf(entry.name);
+    thumbBox.append(badge, singleImg);
+  } else if (showAudio) {
+    singleImg.hidden = true;
+    singleImg.removeAttribute("src");
+    const badge = document.createElement("span");
+    badge.className = "badge lg";
+    badge.textContent = srcExtOf(entry.name);
+    thumbBox.append(badge, singleImg);
+    ppLoad(entry.url);
   } else {
     if (entry.url) {
       singleImg.hidden = false;
@@ -598,6 +795,14 @@ function renderSingleCard() {
     }
   }
   const metaBase = () => `${srcExtOf(entry.name)} · ${fmtSize(entry.size)} → ${activeTarget()}`;
+  if (showDoc) {
+    // Documents show the ext badge plus format/size/target only — no text
+    // excerpt. Excerpts dump raw file boilerplate into the card (a .txt of
+    // scraped page copy reads as broken UI), and decoding here would pull
+    // in the PDF reader just for a preview that nobody asked for.
+    singleMeta.textContent = metaBase();
+    return;
+  }
   if (entry.family === "audio") {
     const cached = durCache.get(entry.hid);
     const withRate = (base) =>
@@ -641,6 +846,78 @@ function renderSingleCard() {
   }
 }
 
+/* Custom target dropdown (Custom mode rows): button + listbox popover that
+   mirrors the old native select, including disabled options with reason tags.
+   Only one popover is open at a time; Escape / outside click closes it. */
+let openPick = null;
+
+function closePick(refocus) {
+  if (!openPick) return;
+  const box = openPick;
+  openPick = null;
+  box.classList.remove("open");
+  const b = box.querySelector(".pick-btn");
+  const l = box.querySelector(".pick-list");
+  if (b) b.setAttribute("aria-expanded", "false");
+  if (l) l.hidden = true;
+  if (refocus && b) {
+    try {
+      b.focus();
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function focusPickOpt(pick, dir) {
+  const opts = [...pick.querySelectorAll(".pick-opt:not(.dis)")];
+  if (!opts.length) return;
+  const cur = opts.indexOf(document.activeElement);
+  const next = dir === "up" ? (cur <= 0 ? opts[opts.length - 1] : opts[cur - 1]) : cur < 0 ? opts[0] : opts[(cur + 1) % opts.length];
+  try {
+    next.focus();
+  } catch {
+    // ignore
+  }
+}
+
+function togglePick(pick) {
+  if (busy) return;
+  if (openPick === pick) {
+    closePick(false);
+    return;
+  }
+  closePick(false);
+  openPick = pick;
+  pick.classList.add("open");
+  const b = pick.querySelector(".pick-btn");
+  const l = pick.querySelector(".pick-list");
+  if (b) b.setAttribute("aria-expanded", "true");
+  if (l) l.hidden = false;
+}
+
+function choosePickOpt(entry, v) {
+  entry.target = v;
+  closePick(false);
+  clearResults();
+  syncActive();
+  syncTiles();
+  renderEstimate();
+  syncConvertBtn();
+  renderRows();
+  renderGridSubs();
+  syncPageTheme();
+  try {
+    const idx = files.indexOf(entry);
+    const btn = idx >= 0 && filerows.querySelector(`[data-index="${idx}"] .pick-btn`);
+    if (btn) btn.focus({ preventScroll: true });
+  } catch {
+    // focus is a nicety, never fatal
+  }
+}
+
+document.addEventListener("click", () => closePick(false));
+
 /** File rows on the Choose tab (bulk text vs custom dropdowns). */
 function renderRows() {
   const multi = files.length > 1;
@@ -669,29 +946,104 @@ function renderRows() {
       t.innerHTML = `&rarr; ${entry.target}`;
       li.append(t);
     } else {
-      const sel = document.createElement("select");
-      sel.className = "mini";
-      sel.setAttribute("aria-label", "Target format for " + entry.name);
-      sel.disabled = busy;
+      const pick = document.createElement("div");
+      pick.className = "pick";
+      const pbtn = document.createElement("button");
+      pbtn.className = "pick-btn";
+      pbtn.type = "button";
+      pbtn.setAttribute("aria-haspopup", "listbox");
+      pbtn.setAttribute("aria-expanded", "false");
+      pbtn.setAttribute("aria-label", "Target format for " + entry.name);
+      pbtn.disabled = busy;
+      const pval = document.createElement("span");
+      pval.className = "pick-val";
+      pval.textContent = entry.target;
+      const pcaret = document.createElement("span");
+      pcaret.className = "pick-caret";
+      pcaret.textContent = "▾";
+      pcaret.setAttribute("aria-hidden", "true");
+      pbtn.append(pval, pcaret);
+      const plist = document.createElement("ul");
+      plist.className = "pick-list";
+      plist.setAttribute("role", "listbox");
+      plist.setAttribute("aria-label", "Target format for " + entry.name);
+      plist.hidden = true;
       targetsFor(entry.family).forEach((opt) => {
-        const o = document.createElement("option");
-        o.value = opt.v;
         const unsupportedAudio = entry.family === "audio" && !opt.soon && !supportsAudioTarget(opt.v);
-        o.textContent = opt.v + (opt.soon ? ` (${(opt.label || "soon").toLowerCase()})` : unsupportedAudio ? " (no support)" : "");
-        o.disabled = opt.soon || unsupportedAudio;
-        if (opt.v === entry.target) o.selected = true;
-        sel.append(o);
+        const unsupportedDoc = entry.family === "document" && !opt.soon && !supportsDocTarget(opt.v);
+        const disabled = opt.soon || unsupportedAudio || unsupportedDoc;
+        const reason = opt.soon ? (opt.label || "soon").toUpperCase() : disabled ? "NO SUPPORT" : "";
+        const item = document.createElement("li");
+        item.className = "pick-opt" + (disabled ? " dis" : "") + (opt.v === entry.target ? " sel" : "");
+        item.setAttribute("role", "option");
+        item.setAttribute("aria-selected", String(opt.v === entry.target));
+        item.tabIndex = -1;
+        if (disabled) item.setAttribute("aria-disabled", "true");
+        else item.dataset.v = opt.v;
+        const lab = document.createElement("span");
+        lab.textContent = opt.v;
+        item.append(lab);
+        if (reason) {
+          const tag = document.createElement("small");
+          tag.className = "tile-tag";
+          tag.setAttribute("aria-hidden", "true");
+          tag.textContent = reason;
+          item.append(tag);
+        }
+        if (!disabled) {
+          const v = opt.v;
+          item.addEventListener("click", (e) => {
+            e.stopPropagation();
+            choosePickOpt(entry, v);
+          });
+          item.addEventListener("keydown", (e) => {
+            const box = e.target.closest(".pick");
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              e.stopPropagation();
+              choosePickOpt(entry, v);
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              e.stopPropagation();
+              closePick(true);
+            } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+              e.preventDefault();
+              e.stopPropagation();
+              if (box) focusPickOpt(box, e.key === "ArrowUp" ? "up" : "down");
+            } else if (e.key === "Tab") {
+              closePick(false);
+            }
+          });
+        }
+        plist.append(item);
       });
-      if (sel.selectedIndex < 0) sel.selectedIndex = 0;
-      sel.addEventListener("click", (e) => e.stopPropagation());
-      sel.addEventListener("change", () => {
-        entry.target = sel.value;
-        clearResults();
-        syncActive();
-        renderEstimate();
-        syncConvertBtn();
+      pbtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        togglePick(pick);
+        if (openPick === pick) {
+          const sel = pick.querySelector(".pick-opt.sel:not(.dis)") || pick.querySelector(".pick-opt:not(.dis)");
+          if (sel) {
+            try {
+              sel.focus();
+            } catch {
+              // ignore
+            }
+          }
+        }
       });
-      li.append(sel);
+      pbtn.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          e.stopPropagation();
+          if (openPick !== pick) togglePick(pick);
+          focusPickOpt(pick, "down");
+        } else if (e.key === "Escape") {
+          closePick(false);
+        }
+      });
+      pick.addEventListener("click", (e) => e.stopPropagation());
+      pick.append(pbtn, plist);
+      li.append(pick);
     }
     if (!convertible(entry)) {
       const tag = document.createElement("span");
@@ -778,6 +1130,7 @@ function renderGrid() {
     fileGrid.appendChild(li);
   });
   toChoose.disabled = files.length === 0 || busy;
+  if (changeBtn) changeBtn.hidden = files.length === 0;
   if (file) {
     renderActiveMeta();
     renderTiles();
@@ -804,6 +1157,7 @@ function refreshChoose() {
     renderEstimate();
   }
   renderRows();
+  renderGridSubs();
   syncMode();
   syncTabs();
   syncPageTheme();
@@ -817,6 +1171,7 @@ function select(i, focus) {
   renderActiveMeta();
   renderTiles();
   renderEstimate();
+  renderRows();
   [...fileGrid.children].forEach((li, j) => li.setAttribute("aria-selected", String(j === activeIndex)));
   if (focus && fileGrid.children[activeIndex]) fileGrid.children[activeIndex].focus();
   syncTabs();
@@ -853,9 +1208,9 @@ function describeRejection(picked) {
   const kind = stubKind(picked);
   const seenType = String((picked && picked.type) || "") || "unknown type";
   const seenExt = extOf(picked && picked.name) || "no extension";
-  if (kind === "video" || kind === "document")
-    return `${picked.name}: noted — ${kind} conversion is coming soon, listed for now. (saw ${seenType} / ${seenExt})`;
-  return `${picked.name}: unsupported file (saw ${seenType} / ${seenExt}) — images (PNG / JPG / SVG / WEBP / HEIC) or audio (MP3 / WAV / FLAC / AAC / OGG / M4A) only.`;
+  if (kind === "video")
+    return `${picked.name}: noted — video conversion is coming soon, listed for now. (saw ${seenType} / ${seenExt})`;
+  return `${picked.name}: unsupported file (saw ${seenType} / ${seenExt}) — images (PNG / JPG / SVG / WEBP / HEIC), audio (MP3 / WAV / OGG / AAC / M4A) or documents (TXT / MD / RTF / PDF / DOCX / EPUB) only.`;
 }
 
 function entryDefault(family) {
@@ -870,6 +1225,14 @@ function entryDefault(family) {
     if (!supportsAudioTarget(t)) {
       if (supportsAudioTarget("MP3")) t = "MP3";
       else t = "WAV";
+    }
+    return t;
+  }
+  if (family === "document") {
+    if (!DOC_CONVERTIBLE_TARGETS.includes(t)) t = "PDF";
+    if (!supportsDocTarget(t)) {
+      if (supportsDocTarget("PDF")) t = "PDF";
+      else t = "TXT";
     }
     return t;
   }
@@ -933,6 +1296,7 @@ function renderEmpty() {
   fileGrid.classList.remove("grid");
   dropEmpty.hidden = false;
   toChoose.disabled = true;
+  if (changeBtn) changeBtn.hidden = true;
   filerows.innerHTML = "";
   filerows.hidden = true;
   showBlk.hidden = true;
@@ -949,6 +1313,7 @@ function renderEmpty() {
 
 function clearResults() {
   if (!results.length) {
+    syncConvertBtn();
     syncTabs();
     return;
   }
@@ -964,6 +1329,7 @@ function clearResults() {
   resultsEl.hidden = true;
   dlAll.hidden = true;
   if (file) renderEstimate();
+  syncConvertBtn();
   syncTabs();
 }
 
@@ -992,6 +1358,7 @@ modeAll.addEventListener("click", () => {
   files.forEach((f) => {
     if (f.family === "image" && REAL_TARGETS.includes(target)) f.target = target;
     else if (f.family === "audio" && REAL_AUDIO_TARGETS.includes(target)) f.target = target;
+    else if (f.family === "document" && REAL_DOC_TARGETS.includes(target)) f.target = target;
     else if (f.family === fam) f.target = entryDefault(f.family);
   });
   clearResults();
@@ -1019,7 +1386,7 @@ fileGrid.addEventListener("keydown", (e) => {
 });
 
 filerows.addEventListener("click", (e) => {
-  if (e.target.closest("select")) return;
+  if (e.target.closest(".pick")) return;
   const li = e.target.closest("[data-index]");
   if (li) select(+li.dataset.index, false);
 });
@@ -1034,11 +1401,16 @@ function renderGridSubs() {
 q.addEventListener("input", () => {
   if (!file || busy) return;
   if (results.length) clearResults();
+  // Live, text-only estimate — no DOM rebuilds, so badges/tiles never flicker.
   renderEstimate();
+});
+q.addEventListener("change", () => {
+  if (!file || busy) return;
+  // Commit row + preview-card badges once per gesture (release / keypress).
   if (isAudioEntry(file)) renderRows();
 });
 
-changeBtn.addEventListener("click", () => changeInput.click());
+if (changeBtn) changeBtn.addEventListener("click", () => changeInput.click());
 emptyBrowseBtn.addEventListener("click", () => changeInput.click());
 convertDrop.addEventListener("click", (event) => {
   if (!event.target.closest("button,input")) changeInput.click();
@@ -1090,7 +1462,7 @@ btn.addEventListener("click", async () => {
   modeManual.disabled = true;
   tiles.forEach((b) => (b.disabled = true));
   q.disabled = true;
-  filerows.querySelectorAll("select").forEach((s) => (s.disabled = true));
+  filerows.querySelectorAll(".pick-btn").forEach((s) => (s.disabled = true));
   syncTabs();
   const quality = +q.value;
   const failed = [];
@@ -1106,7 +1478,15 @@ btn.addEventListener("click", async () => {
       try {
         let blob;
         let outNameFinal;
-        if (isAudioEntry(entry)) {
+        if (isDocEntry(entry)) {
+          const decoded = await decodeDoc(entry.blob, entry.name, (stage) => {
+            if (stage === "ocr") setProgress(base + span * 0.15, `Reading scanned pages in ${entry.name}…${tag}`);
+          });
+          setProgress(base + span * 0.35, `Encoding ${entry.name}…${tag}`);
+          await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 30)));
+          blob = await encodeDoc(decoded.model, entry.target, quality);
+          outNameFinal = outNameDoc(entry.name, entry.target);
+        } else if (isAudioEntry(entry)) {
           if (entry.target === "MP3") {
             try {
               await ensureLame();
@@ -1162,9 +1542,19 @@ btn.addEventListener("click", async () => {
         else if (code === "heic-output-unsupported") reason = "HEIC output isn't supported — pick another format";
         else if (code === "mp3-unsupported") reason = "MP3 encoding isn't supported in this browser — try WAV";
         else if (code === "ogg-unsupported") reason = "OGG encoding isn't supported in this browser — try WAV or MP3";
-        else if (code === "flac-unsupported") reason = "FLAC encoding isn't supported in this browser — try WAV";
         else if (code === "aac-unsupported") reason = "AAC encoding isn't supported in this browser — try WAV or MP3";
         else if (code === "m4a-unsupported") reason = "M4A encoding isn't supported in this browser — try WAV or MP3";
+        else if (code === "pdf-unsupported") reason = "PDF reading isn't available — the reader failed to load, try again";
+        else if (code === "pdf-no-text") reason = "no extractable text — scanned PDF with nothing recognized";
+        else if (code === "ocr-unsupported") reason = "scanned PDF needs the OCR engine, which couldn't load — try a text PDF";
+        else if (code === "ocr-failed") reason = "couldn't read the scanned pages — try a text-based PDF";
+        else if (code === "zip-unsupported") reason = `${entry.target} needs ZIP support this browser lacks — try TXT or PDF`;
+        else if (code === "zip-encrypted") reason = "couldn't be read — encrypted container, remove the password first";
+        else if (code === "zip-corrupt") reason = "couldn't be read — the container looks damaged";
+        else if (code === "docx-corrupt" || code === "epub-corrupt" || code === "rtf-corrupt")
+          reason = "couldn't be read — the file may be damaged";
+        else if (code === "docx-no-text" || code === "epub-no-text")
+          reason = "no convertible text found in the file";
         else if (code === "encode-unsupported" || code === "encode-timeout")
           reason = `${entry.target} encoding isn't supported in this browser — try WAV`;
         else if (code === "webaudio-unsupported") reason = "audio decoding isn't supported in this browser";
@@ -1232,15 +1622,27 @@ dlAll.addEventListener("click", async () => {
 });
 
 // --- init: load staged files first so scramble measures the final H1 ---
+// Staged files are only honoured when arriving from home with ?staged=1.
+// Direct visits always start on the Drop tab; any stale staging is cleared
+// so old files can't resurrect the Choose tab.
 async function loadStaged() {
   const params = new URLSearchParams(location.search);
+  const hasStagedFlag = params.get("staged") === "1";
   const paramTarget = (params.get("target") || stagedTargetFallback() || "").toUpperCase();
   if (paramTarget) target = paramTarget;
   let rows = [];
-  try {
-    rows = await Promise.race([getStaged(), new Promise((resolve) => setTimeout(() => resolve([]), 1500))]);
-  } catch {
-    rows = [];
+  if (hasStagedFlag) {
+    try {
+      rows = await Promise.race([getStaged(), new Promise((resolve) => setTimeout(() => resolve([]), 1500))]);
+    } catch {
+      rows = [];
+    }
+  } else {
+    try {
+      await clearStaged();
+    } catch {
+      // storage hygiene is best-effort
+    }
   }
   const usable = rows.filter((r) => r && r.blob && isKnown({ name: r.name, type: r.type }));
   extraCount = Math.max(0, rows.length - Math.min(usable.length, MAX_FILES));
@@ -1261,7 +1663,7 @@ async function loadStaged() {
     // Keep staged targets when they belong to the other family; renderTiles
     // validates per-family below.
     const up = String(target || "").toUpperCase();
-    if (![...REAL_TARGETS, ...REAL_AUDIO_TARGETS, "HEIC"].includes(up)) target = "WEBP";
+    if (![...REAL_TARGETS, ...REAL_AUDIO_TARGETS, ...REAL_DOC_TARGETS, "HEIC"].includes(up)) target = "WEBP";
   }
 }
 
@@ -1282,9 +1684,13 @@ files.forEach((f) => {
   if (f.family === "audio" && !supportsAudioTarget(f.target)) {
     f.target = supportsAudioTarget("MP3") ? "MP3" : "WAV";
   }
+  if (f.family === "document" && !supportsDocTarget(f.target)) {
+    f.target = supportsDocTarget("PDF") ? "PDF" : "TXT";
+  }
 });
+if (target && !supportsDocTarget(target) && REAL_DOC_TARGETS.includes(target)) target = "PDF";
 if (target && files.length === 0) {
-  if (![...REAL_TARGETS, ...REAL_AUDIO_TARGETS].includes(target)) target = "WEBP";
+  if (![...REAL_TARGETS, ...REAL_AUDIO_TARGETS, ...REAL_DOC_TARGETS].includes(target)) target = "WEBP";
 }
 setFormatTheme(target);
 if (files.length) {
@@ -1302,6 +1708,35 @@ if (files.length) {
   setStatus("");
 } else {
   renderEmpty();
+}
+// Preload the vendored MP3 encoder so the MP3 tile enables wherever the
+// browser lacks native MP3 recording. Targets are left alone — this only
+// re-renders availability once LAME arrives.
+try {
+  ensureLame().then((ok) => {
+    if (ok && !busy && files.some((f) => f.family === "audio")) {
+      renderTiles();
+      renderRows();
+    }
+  });
+} catch {
+  // MP3 stays on its fallback path
+}
+// Preload the vendored PDF reader when documents are staged so PDF text
+// extraction doesn't wait on first convert.
+// Tesseract is deliberately NOT preloaded (multi-MB OCR engine) — it loads
+// on demand when a scanned-image PDF is detected.
+try {
+  if (files.some((f) => f.family === "document")) {
+    ensurePdf().then(() => {
+      if (!busy && files.some((f) => f.family === "document")) {
+        renderTiles();
+        renderRows();
+      }
+    });
+  }
+} catch {
+  // PDF input falls back to honest error codes
 }
 initScramble();
 

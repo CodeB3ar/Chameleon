@@ -4,7 +4,7 @@
      WAV: hand-rolled 16-bit PCM (always available, lossless).
      MP3: vendored LAME (assets/vendor/lame.min.js) when present,
           else MediaRecorder audio/mpeg where the browser allows it.
-     OGG / AAC / M4A / FLAC: MediaRecorder pipeline through a
+     OGG / AAC / M4A: MediaRecorder pipeline through a
           MediaStreamDestination, gated by supportsAudioTarget().
    Capability gating mirrors encode.js supportsWebp(): unsupported targets
    render disabled with NO SUPPORT instead of breaking the convert loop.
@@ -14,7 +14,6 @@ export const AUDIO_MIME_FOR = {
   MP3: "audio/mpeg",
   WAV: "audio/wav",
   OGG: "audio/ogg",
-  FLAC: "audio/flac",
   AAC: "audio/aac",
   M4A: "audio/mp4",
 };
@@ -25,12 +24,11 @@ const RECORDER_MIMES = {
   OGG: ["audio/ogg;codecs=opus", "audio/ogg;codecs=vorbis", "audio/ogg", "audio/webm;codecs=opus"],
   AAC: ["audio/aac", "audio/mp4;codecs=mp4a.40.2", "audio/mp4"],
   M4A: ["audio/mp4;codecs=mp4a.40.2", "audio/mp4", "audio/aac"],
-  FLAC: ["audio/flac"],
   WAV: ["audio/wav"],
 };
 
 const STANDARD_BITRATES = [64, 96, 128, 160, 192, 256, 320];
-export const LOSSLESS_TARGETS = ["WAV", "FLAC"];
+export const LOSSLESS_TARGETS = ["WAV"];
 
 let lamePromise = null;
 
@@ -236,16 +234,43 @@ export function encodeWavBuffer(audioBuffer) {
   return new Blob([buffer], { type: "audio/wav" });
 }
 
+/** Resample via OfflineAudioContext (used when LAME can't take the source rate). */
+async function resampleBuffer(audioBuffer, targetRate) {
+  const Ctx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  if (!Ctx) throw new Error("mp3-unsupported");
+  const channels = Math.min(2, audioBuffer.numberOfChannels || 1);
+  const srcRate = audioBuffer.sampleRate || 44100;
+  const len = Math.max(1, Math.ceil((audioBuffer.length * targetRate) / srcRate));
+  const ctx = new Ctx(channels, len, targetRate);
+  const src = ctx.createBufferSource();
+  src.buffer = audioBuffer;
+  src.connect(ctx.destination);
+  src.start(0);
+  return ctx.startRendering();
+}
+
+// Sample rates LAME accepts. Anything else (e.g. 96kHz hi-res) is resampled.
+const LAME_RATES = [8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000];
+
 /** MP3 via vendored LAME (expects window.Mp3Encoder or window.lamejs). */
 async function encodeMp3Lame(audioBuffer, bitrateKbps) {
   const Enc = window.Mp3Encoder || (window.lamejs && window.lamejs.Mp3Encoder);
   if (!Enc) throw new Error("mp3-unsupported");
-  const channels = Math.min(2, audioBuffer.numberOfChannels || 1);
-  const sampleRate = audioBuffer.sampleRate || 44100;
+  let buf = audioBuffer;
+  let sampleRate = audioBuffer.sampleRate || 44100;
+  if (!LAME_RATES.includes(sampleRate)) {
+    try {
+      buf = await resampleBuffer(audioBuffer, 44100);
+      sampleRate = 44100;
+    } catch {
+      throw new Error("mp3-unsupported");
+    }
+  }
+  const channels = Math.min(2, buf.numberOfChannels || 1);
   const kbps = Number(bitrateKbps) || 192;
   const enc = new Enc(channels, sampleRate, kbps);
-  const left = audioBuffer.getChannelData(0);
-  const right = channels > 1 ? audioBuffer.getChannelData(1) : left;
+  const left = buf.getChannelData(0);
+  const right = channels > 1 ? buf.getChannelData(1) : left;
   const to16 = (f) => {
     const a = new Int16Array(f.length);
     for (let i = 0; i < f.length; i++) {
@@ -340,7 +365,7 @@ async function encodeViaRecorder(audioBuffer, mime, bitrateKbps) {
 }
 
 /**
- * Encode a decoded AudioBuffer to target ("MP3"|"WAV"|"OGG"|"FLAC"|"AAC"|"M4A").
+ * Encode a decoded AudioBuffer to target ("MP3"|"WAV"|"OGG"|"AAC"|"M4A").
  */
 export async function encodeAudio(audioBuffer, target, quality) {
   const t = String(target || "").toUpperCase();
@@ -359,7 +384,7 @@ export async function encodeAudio(audioBuffer, target, quality) {
   const mime = recorderMimeFor(t);
   if (!mime) {
     const code =
-      t === "FLAC" ? "flac-unsupported" : t === "OGG" ? "ogg-unsupported" : t === "AAC" ? "aac-unsupported" : t === "M4A" ? "m4a-unsupported" : "encode-unsupported";
+      t === "OGG" ? "ogg-unsupported" : t === "AAC" ? "aac-unsupported" : t === "M4A" ? "m4a-unsupported" : "encode-unsupported";
     throw new Error(code);
   }
   return encodeViaRecorder(audioBuffer, mime, kbps || undefined);
@@ -368,7 +393,6 @@ export async function encodeAudio(audioBuffer, target, quality) {
 export function extForAudio(target) {
   const t = String(target || "").toLowerCase();
   if (t === "m4a") return "m4a";
-  if (t === "flac") return "flac";
   if (t === "aac") return "aac";
   if (t === "ogg") return "ogg";
   if (t === "wav") return "wav";
