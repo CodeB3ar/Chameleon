@@ -6,7 +6,7 @@
    files stages and navigates automatically. Everything stays local. */
 
 import { initScramble } from "./scramble.js";
-import { isSupported, stubKind, fmtSize, IMAGE_TARGETS } from "./convert.js";
+import { isSupported, stubKind, fmtSize, IMAGE_TARGETS, AUDIO_TARGETS, familyOf } from "./convert.js";
 import { pushHistory } from "./history.js";
 import { putStaged } from "./store.js";
 
@@ -37,6 +37,11 @@ function setStatus(msg) {
   statusEl.textContent = msg;
 }
 
+function queueFamily() {
+  if (!queue.length) return "";
+  return familyOf(queue[0].file) || "image";
+}
+
 function renderTargets() {
   chipsEl.innerHTML = "";
   const label = document.createElement("span");
@@ -59,7 +64,9 @@ function renderTargets() {
   label.textContent = "Convert to";
   chipsEl.setAttribute("aria-label", "Convert to");
   chipsEl.append(label);
-  for (const f of IMAGE_TARGETS) {
+  const fam = queueFamily();
+  const list = fam === "audio" ? AUDIO_TARGETS : IMAGE_TARGETS;
+  for (const f of list) {
     const on = f === target;
     const b = document.createElement("button");
     b.className = "chip" + (on ? " on" : "");
@@ -97,12 +104,19 @@ function thumbUrl(file) {
 
 function describeRejection(file) {
   if (file.size > MAX_BYTES) return `${file.name}: over 50 MB — pick a smaller file.`;
+  const seenType = String(file.type || "") || "unknown type";
   const kind = stubKind(file);
-  if (kind === "audio" || kind === "video" || kind === "document")
-    return `${file.name}: ${kind} conversion is coming soon — images only for now.`;
+  if (kind === "video" || kind === "document")
+    return `${file.name}: ${kind} conversion is coming soon — images and audio for now. (saw ${seenType})`;
   if (kind === "image")
-    return `${file.name}: that image type isn't supported yet — PNG / JPG / SVG / WEBP / HEIC only.`;
-  return `${file.name}: unsupported file — PNG / JPG / SVG / WEBP / HEIC only.`;
+    return `${file.name}: that image type isn't supported yet — PNG / JPG / SVG / WEBP / HEIC only. (saw ${seenType})`;
+  return `${file.name}: unsupported file — images (PNG / JPG / SVG / WEBP / HEIC) or audio (MP3 / WAV / FLAC / AAC / OGG / M4A) only. (saw ${seenType})`;
+}
+
+function syncTargetToQueue() {
+  const fam = queueFamily();
+  if (fam === "audio" && !AUDIO_TARGETS.includes(target)) target = "mp3";
+  if ((fam === "image" || fam === "") && !IMAGE_TARGETS.includes(target)) target = "png";
 }
 
 function addFiles(files) {
@@ -117,12 +131,19 @@ function addFiles(files) {
       continue;
     }
     if (!isSupported(file) || file.size > MAX_BYTES) {
-      rejected.push(describeRejection(file));
+      const reason = describeRejection(file);
+      try {
+        console.debug("[chameleon] rejected", { name: file.name, type: file.type, size: file.size, reason });
+      } catch {
+        // ignore
+      }
+      rejected.push(reason);
       continue;
     }
     const hid = "h" + Date.now().toString(36) + "-" + seq++;
     const url = thumbUrl(file);
     queue.push({ hid, file, url });
+    syncTargetToQueue();
     pushHistory({ id: hid, name: file.name, size: file.size, format: target });
     added++;
   }
@@ -146,6 +167,7 @@ function removeAt(i) {
       // ignore
     }
   }
+  syncTargetToQueue();
   syncTargets();
   setStatus(queue.length ? `${queue.length} file${queue.length === 1 ? "" : "s"} selected.` : "No files selected yet.");
 }
@@ -159,7 +181,8 @@ function renderQueue() {
     const thumb = document.createElement("div");
     thumb.className = "thumb";
     const entry = queue[i];
-    if (entry.url) {
+    const fam = familyOf(file) || "image";
+    if (entry.url && fam === "image") {
       const img = document.createElement("img");
       img.src = entry.url;
       img.alt = "";
@@ -171,7 +194,7 @@ function renderQueue() {
       thumb.appendChild(img);
       thumb.classList.add("has-img");
     } else {
-      thumb.textContent = "IMG";
+      thumb.textContent = fam === "audio" ? String(file.name || "").split(".").pop().toUpperCase().slice(0, 4) || "AUD" : "IMG";
       thumb.setAttribute("aria-hidden", "true");
     }
 
@@ -264,8 +287,8 @@ window.addEventListener("paste", (e) => {
 chipsEl.addEventListener("click", (e) => {
   const fam = e.target.closest("[data-family]");
   if (fam) {
-    if (fam.dataset.family === "images") openPicker();
-    else setStatus(`${cap1(fam.dataset.family)} conversion is coming soon — images only for now.`);
+    if (fam.dataset.family === "images" || fam.dataset.family === "audio") openPicker();
+    else setStatus(`${cap1(fam.dataset.family)} conversion is coming soon — images and audio for now.`);
     return;
   }
   const btn = e.target.closest(".chip[data-f]");

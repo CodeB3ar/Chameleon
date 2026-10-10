@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Chameleon — Convert anything</title>
-  <link rel="stylesheet" href="css/style.css?v=3" />
+  <link rel="stylesheet" href="css/style.css?v=4" />
 </head>
 <body>
   <div class="pg" data-theme="orange">
@@ -30,12 +30,12 @@
           <p class="sub">Drop in a file, pick a format, and Chameleon turns it into whatever you need. Images, audio, video and documents.</p>
           <div class="panel">
             <div class="ph"><span class="cap">Step 01 — Drop a file</span><span class="cap" id="status" role="status" aria-live="polite">No files selected yet.</span></div>
-            <div class="drop" id="drop" tabindex="0" role="button" aria-label="Drop image files here or press Enter to browse">
+            <div class="drop" id="drop" tabindex="0" role="button" aria-label="Drop image or audio files here or press Enter to browse">
               <svg width="44" height="44" viewBox="0 0 44 44" fill="none" stroke="#161616" stroke-width="2.4" stroke-linecap="square" aria-hidden="true"><path d="M22 30V8M13 17l9-9 9 9M7 30v6h30v-6"></path></svg>
               <strong>Drag &amp; Drop your file here</strong>
               <span class="cap">or</span>
               <button class="btn dk" type="button" id="browse-btn">Choose file</button>
-              <input class="vh" id="file-input" type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp,image/heic,image/heif,.png,.jpg,.jpeg,.svg,.webp,.heic,.heif" multiple />
+              <input class="vh" id="file-input" type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp,image/heic,image/heif,audio/mpeg,audio/wav,audio/flac,audio/aac,audio/ogg,audio/mp4,audio/webm,.png,.jpg,.jpeg,.svg,.webp,.heic,.heif,.mp3,.wav,.flac,.aac,.ogg,.oga,.opus,.m4a,.weba,.3gp" multiple />
               <span class="cap" id="file-info">No files selected yet.</span>
             </div>
             <ul class="queue" id="queue" hidden></ul>
@@ -100,6 +100,6 @@
     </footer>
   </div>
 
-  <script type="module" src="./js/home.js"></script>
+  <script type="module" src="./js/home.js?v=1"></script>
 </body>
 </html>

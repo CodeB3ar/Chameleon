@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Chameleon — Convert a PNG</title>
-  <link rel="stylesheet" href="css/style.css?v=3" />
+  <link rel="stylesheet" href="css/style.css?v=4" />
 </head>
 <body>
   <div class="pg" data-format="webp">
@@ -44,15 +44,16 @@
               <div class="go">
                 <span>
                   <button class="link" type="button" id="change-btn">Add files</button>
-                  <input class="vh" id="change-input" type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp,image/heic,image/heif,.png,.jpg,.jpeg,.svg,.webp,.heic,.heif,.bmp,.tif,.tiff,.mp3,.wav,.flac,.aac,.ogg,.m4a,.mp4,.mov,.webm,.mkv,.avi,.pdf,.docx,.txt,.rtf,.epub,.md" multiple />
+                  <input class="vh" id="change-input" type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp,image/heic,image/heif,audio/mpeg,audio/wav,audio/flac,audio/aac,audio/ogg,audio/mp4,audio/webm,.png,.jpg,.jpeg,.svg,.webp,.heic,.heif,.bmp,.tif,.tiff,.mp3,.wav,.flac,.aac,.ogg,.oga,.opus,.m4a,.weba,.3gp,.mp4,.mov,.webm,.mkv,.avi,.pdf,.docx,.txt,.rtf,.epub,.md" multiple />
                 </span>
                 <button class="btn" type="button" id="to-choose">Continue →</button>
               </div>
+              <p class="hint" id="convert-status" role="status" aria-live="polite"></p>
             </div>
             <div id="view-choose" role="tabpanel" aria-labelledby="tab2">
               <div class="fcard hero-card" id="single-card" hidden>
                 <div class="hero-thumb"><img id="single-img" alt=""></div>
-                <div class="fcard-body"><div class="nm" id="single-name">—</div><div class="cap" id="single-meta">—</div></div>
+                <div class="fcard-body"><div class="nm" id="single-name">—</div><div class="cap" id="single-meta">—</div><audio id="single-audio" controls preload="metadata" style="width:100%;margin-top:8px"></audio></div>
               </div>
               <div class="blk" id="show-blk" hidden>
                 <div class="seg" role="group" aria-label="File list mode" id="mode-seg">
@@ -64,7 +65,7 @@
               <ul class="frows" id="filerows" hidden></ul>
               <div class="blk" id="tiles-blk">
                 <span class="cap">Convert to</span>
-                <div class="t6" role="group" aria-label="Convert to" id="tiles"><button class="tile" type="button" aria-pressed="false" data-f="PNG">PNG</button><button class="tile" type="button" aria-pressed="false" data-f="JPG">JPG</button><button class="tile" type="button" aria-pressed="false" data-f="SVG">SVG</button><button class="tile on" type="button" aria-pressed="true" data-f="WEBP">WEBP</button><button class="tile has-tag" type="button" aria-pressed="false" data-f="HEIC" title="HEIC is input-only — pick another output format." aria-label="HEIC — input only">HEIC<small class="tile-tag" aria-hidden="true">INPUT ONLY</small></button></div>
+                <div class="t6" role="group" aria-label="Convert to" id="tiles"></div>
               </div>
               <div class="blk" id="q-blk">
                 <span class="cap">Quality <span id="qv">82%</span> &middot; <span id="eg">Estimated output —</span></span>
@@ -125,6 +126,6 @@
     </footer>
   </div>
 
-  <script type="module" src="./js/convert-page.js?v=2"></script>
+  <script type="module" src="./js/convert-page.js?v=3"></script>
 </body>
 </html>

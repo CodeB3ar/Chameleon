@@ -17,6 +17,12 @@
     .pg[data-format="jpg"]{--o:#19c3b0}
     .pg[data-format="svg"]{--o:#a98bff}
     .pg[data-format="webp"]{--o:#a6d92b}
+    .pg[data-format="mp3"]{--o:#ff6a13}
+    .pg[data-format="wav"]{--o:#19c3b0}
+    .pg[data-format="ogg"]{--o:#a98bff}
+    .pg[data-format="flac"]{--o:#a6d92b}
+    .pg[data-format="aac"]{--o:#ff9ecb}
+    .pg[data-format="m4a"]{--o:#6db4ff}
     .pg *{box-sizing:border-box}
     .disp{font-family:"LABS Amiga","Roboto Mono",monospace;font-weight:400;text-transform:uppercase;line-height:.95;margin:0}
     .cap{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--mut)}
@@ -202,6 +208,13 @@
     .pg[data-format="jpg"] .tile.on,.pg[data-format="jpg"] .tile.on:hover{background:#19c3b0}
     .pg[data-format="svg"] .tile.on,.pg[data-format="svg"] .tile.on:hover{background:#a98bff}
     .pg[data-format="webp"] .tile.on,.pg[data-format="webp"] .tile.on:hover{background:#a6d92b}
+    .pg[data-format="mp3"] .tile.on,.pg[data-format="mp3"] .tile.on:hover{background:#ff6a13}
+    .pg[data-format="wav"] .tile.on,.pg[data-format="wav"] .tile.on:hover{background:#19c3b0}
+    .pg[data-format="ogg"] .tile.on,.pg[data-format="ogg"] .tile.on:hover{background:#a98bff}
+    .pg[data-format="flac"] .tile.on,.pg[data-format="flac"] .tile.on:hover{background:#a6d92b}
+    .pg[data-format="aac"] .tile.on,.pg[data-format="aac"] .tile.on:hover{background:#ff9ecb}
+    .pg[data-format="m4a"] .tile.on,.pg[data-format="m4a"] .tile.on:hover{background:#6db4ff}
+    #single-audio{width:100%;margin-top:8px;accent-color:var(--o)}
     .tile.has-tag{flex-direction:column;gap:2px;line-height:1.15}
     .tile-tag{font-size:10px;font-weight:700;letter-spacing:.08em;opacity:.8}
     .link{background:none;border:0;padding:4px 0;font:400 13px "Roboto Mono",monospace;text-decoration:underline;color:var(--ink);cursor:pointer}

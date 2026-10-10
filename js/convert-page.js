@@ -19,15 +19,32 @@ import {
   targetsFor,
   defaultTargetFor,
   CONVERTIBLE_TARGETS,
+  AUDIO_CONVERTIBLE_TARGETS,
 } from "./convert.js";
 import { decodeImage, encodeImage, supportsWebp, getImageDimensions, outName } from "./encode.js";
+import {
+  decodeAudio,
+  encodeAudio,
+  supportsAudioTarget,
+  ensureLame,
+  bitrateForQuality,
+  bitrateLabel,
+  getAudioDuration,
+  fmtDuration,
+  outNameAudio,
+  LOSSLESS_TARGETS,
+} from "./encode-audio.js";
 
 const MAX_FILES = 10;
 const GRID_FROM = 3; // < GRID_FROM files: long banner; >= GRID_FROM: grid
 const REAL_TARGETS = ["PNG", "JPG", "SVG", "WEBP"];
+const REAL_AUDIO_TARGETS = ["MP3", "WAV", "OGG", "FLAC", "AAC", "M4A"];
 // Shell estimate weights (used until a real conversion measures bytes).
 // SVG wraps a PNG raster as base64, so it runs larger than the source.
 const WEIGHTS = { PNG: 1.0, JPG: 0.45, SVG: 1.35, WEBP: 0.35 };
+// Audio weights mirror the photo approach: lossy shrinks, WAV grows to PCM,
+// FLAC lands near the source. Quality scales lossy targets only.
+const AUDIO_WEIGHTS = { MP3: 0.32, AAC: 0.3, OGG: 0.27, M4A: 0.3, FLAC: 0.85, WAV: 1.4 };
 const BASE = 1.2;
 
 const $ = (id) => document.getElementById(id);
@@ -56,7 +73,8 @@ const modeManual = $("mode-manual");
 const modeNote = $("mode-note");
 const filerows = $("filerows");
 const tilesBlk = $("tiles-blk");
-const tiles = [...document.querySelectorAll("#tiles .tile")];
+const tilesEl = $("tiles");
+let tiles = [...document.querySelectorAll("#tiles .tile")];
 const qBlk = $("q-blk");
 const q = $("q");
 const qv = $("qv");
@@ -87,6 +105,7 @@ const backSettings = $("back-settings");
 const againBtn = $("again-btn");
 const readout = $("readout");
 const bacard = $("bacard");
+const statusEl = $("convert-status");
 
 const files = []; // { hid, blob, name, size, type, url?, family, target }
 let activeIndex = 0;
@@ -101,16 +120,28 @@ let results = []; // { entryName, blob, url, name, size, target, quality }
 let seq = 0;
 const dimsCache = new Map(); // hid -> { w, h } | null (null = undecodable here)
 const dimsPending = new Set(); // hids with an in-flight dimension decode
+const durCache = new Map(); // hid -> seconds | null
+const durPending = new Set();
 let dimsReq = 0;
 
-function setStatus() {}
+function setStatus(msg) {
+  try {
+    if (typeof console !== "undefined" && msg) console.debug("[chameleon]", msg);
+    if (statusEl) statusEl.textContent = msg || "";
+  } catch {
+    // status is best-effort narration, never fatal
+  }
+}
 
 // Format-driven accent: selected output format re-themes page accents via
 // .pg[data-format] (css). HEIC/unknown never drive the theme — keep last.
 const pg = document.querySelector(".pg");
 function setFormatTheme(fmt) {
   if (!pg) return;
-  const map = { png: "png", jpg: "jpg", jpeg: "jpg", svg: "svg", webp: "webp" };
+  const map = {
+    png: "png", jpg: "jpg", jpeg: "jpg", svg: "svg", webp: "webp",
+    mp3: "mp3", wav: "wav", ogg: "ogg", flac: "flac", aac: "aac", m4a: "m4a",
+  };
   const next = map[String(fmt || "").toLowerCase()];
   if (!next) return;
   if (pg.dataset.format !== next) pg.dataset.format = next;
@@ -129,7 +160,14 @@ function syncActive() {
 }
 
 function convertible(entry) {
-  return entry.family === "image" && CONVERTIBLE_TARGETS.includes(entry.target);
+  if (!entry) return false;
+  if (entry.family === "image") return CONVERTIBLE_TARGETS.includes(entry.target);
+  if (entry.family === "audio") return AUDIO_CONVERTIBLE_TARGETS.includes(entry.target);
+  return false;
+}
+
+function isAudioEntry(entry) {
+  return !!entry && entry.family === "audio";
 }
 
 function convertibleCount() {
@@ -157,8 +195,8 @@ function syncMode() {
     modeNote.textContent = "Mixed file types — bulk is locked. Set each file with Custom.";
     modeNote.hidden = false;
   }
-  // Tiles/quality drive bulk image conversion; hide them when bulk can't act.
-  const showBulkCtrls = mode === "bulk" && ok && files.some((f) => f.family === "image");
+  // Tiles/quality drive bulk conversion; hide them when bulk can't act.
+  const showBulkCtrls = mode === "bulk" && ok && files.some((f) => convertible(f) || f.family === "image" || f.family === "audio");
   tilesBlk.hidden = !showBulkCtrls && !(mode === "manual" && files.length === 1);
   qBlk.hidden = convertibleCount() === 0;
   // Multi-file: drop the per-file readout, keep the before/after card top-right at natural size.
@@ -199,12 +237,19 @@ function thumbUrl(blob, type, name) {
   const isImg =
     t.startsWith("image/") ||
     [".png", ".jpg", ".jpeg", ".svg", ".webp", ".heic", ".heif"].some((e) => n.endsWith(e));
-  if (!isImg) return null;
+  const isAudio =
+    t.startsWith("audio/") ||
+    [".mp3", ".wav", ".flac", ".aac", ".ogg", ".oga", ".opus", ".m4a", ".weba", ".3gp"].some((e) => n.endsWith(e));
+  if (!isImg && !isAudio) return null;
   try {
     return URL.createObjectURL(blob);
   } catch {
     return null;
   }
+}
+
+function isImageEntry(entry) {
+  return !!entry && entry.family === "image";
 }
 
 function srcExtOf(name) {
@@ -218,11 +263,65 @@ function activeTarget() {
 function estimateKBFor(entry) {
   const srcKB = Math.max(1, entry.size / 1024);
   const v = +q.value;
+  if (isAudioEntry(entry)) {
+    const w = AUDIO_WEIGHTS[entry.target] || 0.32;
+    // Lossless targets ignore quality (mirrors PNG + FAQ copy).
+    const qf = LOSSLESS_TARGETS.includes(entry.target) ? 1 : 0.4 + (0.98 * v) / 100;
+    return ((srcKB * w) / BASE) * qf * 1.35;
+  }
   return (srcKB * (WEIGHTS[entry.target] || 0.4)) / BASE * (0.4 + (0.98 * v) / 100);
 }
 
 function fmtKB(kb) {
   return kb >= 1024 ? (kb / 1024).toFixed(1) + " MB" : Math.round(kb) + " KB";
+}
+
+function tilesFamily() {
+  if (!files.length) return (file && file.family) || "image";
+  if (mode === "bulk" && bulkAvailable()) return files[0].family;
+  return (file && file.family) || files[0].family;
+}
+
+function onTileClick(fmt) {
+  if (!file || busy) return;
+  target = fmt;
+  // Theme first: page accents + selected tile recolour even if a render below throws.
+  setFormatTheme(target);
+  const fam = tilesFamily();
+  if (mode === "bulk") {
+    files.forEach((f) => {
+      if (f.family !== fam) return;
+      if (fam === "image" && REAL_TARGETS.includes(target)) f.target = target;
+      if (fam === "audio" && REAL_AUDIO_TARGETS.includes(target)) f.target = target;
+    });
+  } else if (file.family === fam) {
+    file.target = target;
+  }
+  clearResults();
+  syncTiles();
+  renderEstimate();
+  renderRows();
+  renderGridSubs();
+  syncPageTheme();
+}
+
+function renderTiles() {
+  const fam = tilesFamily();
+  const defs = fam === "audio" ? REAL_AUDIO_TARGETS : [...REAL_TARGETS, "HEIC"];
+  tilesEl.innerHTML = "";
+  defs.forEach((f) => {
+    const b = document.createElement("button");
+    b.className = "tile";
+    b.type = "button";
+    b.dataset.f = f;
+    b.setAttribute("aria-pressed", "false");
+    b.textContent = f;
+    b.addEventListener("click", () => onTileClick(f));
+    tilesEl.appendChild(b);
+  });
+  tiles = [...tilesEl.querySelectorAll(".tile")];
+  syncTiles();
+  syncTileAvailability();
 }
 
 function syncTiles() {
@@ -249,23 +348,41 @@ function labelTile(btn, text) {
 
 /** Re-apply capability-based availability after busy ends or at init. */
 function syncTileAvailability() {
+  const fam = tilesFamily();
   tiles.forEach((b) => {
+    if (busy) {
+      b.disabled = true;
+      return;
+    }
     b.disabled = false;
   });
-  if (!supportsWebp()) {
-    const w = tiles.find((b) => b.dataset.f === "WEBP");
-    if (w) {
-      w.disabled = true;
-      w.title = "This browser can't encode WebP — JPG works.";
-      labelTile(w, "NO SUPPORT");
+  if (busy) return;
+  if (fam === "image") {
+    if (!supportsWebp()) {
+      const w = tiles.find((b) => b.dataset.f === "WEBP");
+      if (w) {
+        w.disabled = true;
+        w.title = "This browser can't encode WebP — JPG works.";
+        labelTile(w, "NO SUPPORT");
+      }
     }
+    // HEIC is input-only — never a valid output target.
+    const h = tiles.find((b) => b.dataset.f === "HEIC");
+    if (h) {
+      h.disabled = true;
+      h.title = "HEIC is input-only — pick another output format.";
+      labelTile(h, "INPUT ONLY");
+    }
+    return;
   }
-  // HEIC is input-only — never a valid output target.
-  const h = tiles.find((b) => b.dataset.f === "HEIC");
-  if (h) {
-    h.disabled = true;
-    h.title = "HEIC is input-only — pick another output format.";
-    labelTile(h, "INPUT ONLY");
+  if (fam === "audio") {
+    tiles.forEach((b) => {
+      if (!supportsAudioTarget(b.dataset.f)) {
+        b.disabled = true;
+        b.title = `${b.dataset.f} encoding isn't supported in this browser — WAV works everywhere.`;
+        labelTile(b, "NO SUPPORT");
+      }
+    });
   }
 }
 
@@ -274,14 +391,16 @@ function syncConvertBtn() {
   btn.disabled = n === 0 || busy;
   btn.innerHTML =
     files.length > 1 ? `Convert ${n} file${n === 1 ? "" : "s"} &rarr;` : `Convert to ${activeTarget()} &rarr;`;
-  btn.title = n === 0 ? "Nothing convertible yet — images convert to PNG / JPG / SVG / WEBP." : "";
+  btn.title =
+    n === 0 ? "Nothing convertible yet — images convert to PNG / JPG / SVG / WEBP, audio to MP3 / WAV / OGG / FLAC / AAC / M4A." : "";
 }
 
 function renderEstimate() {
   const at = activeTarget();
   const v = +q.value;
-  qv.textContent = v + "%";
-  qr.textContent = v;
+  const audioActive = !!file && isAudioEntry(file);
+  qv.textContent = audioActive && !LOSSLESS_TARGETS.includes(at) ? `${v}% · ${bitrateLabel(v, at)}` : v + "%";
+  qr.textContent = audioActive && !LOSSLESS_TARGETS.includes(at) ? `${v} · ${bitrateLabel(v, at)}` : v;
   tr.textContent = at;
   // Multi-file: aggregate totals across convertible files (mixed types
   // included) instead of showing the active file alone.
@@ -364,16 +483,22 @@ function thumbOrBadge(url, name) {
   return badge;
 }
 
-function renderResults() {
+function renderResults(failed = []) {
+  const failedList = Array.isArray(failed) ? failed : [];
   const totalIn = files.reduce((a, f) => a + f.size, 0);
   const totalOut = results.reduce((a, r) => a + r.size, 0);
-  const skipped = files.length - results.length;
+  // "Unsupported" = never attempted (stub family); "failed" = attempted but errored.
+  const unsupported = files.filter((f) => !convertible(f)).length;
   rname.textContent = `${results.length} file${results.length === 1 ? "" : "s"} converted`;
+  const qSuffix = results.some((r) => AUDIO_CONVERTIBLE_TARGETS.includes(r.target) && !LOSSLESS_TARGETS.includes(r.target))
+    ? `quality ${q.value} · ${bitrateLabel(+q.value, results[0].target)}`
+    : `quality ${q.value}`;
   rmeta.textContent =
-    `${fmtSize(totalIn)} → ${fmtSize(totalOut)} · quality ${q.value}` +
-    (skipped ? ` · ${skipped} skipped (coming soon)` : "");
+    `${fmtSize(totalIn)} → ${fmtSize(totalOut)} · ${qSuffix}` +
+    (failedList.length ? ` · ${failedList.length} failed` : "") +
+    (unsupported ? ` · ${unsupported} not yet supported` : "");
   resultsEl.innerHTML = "";
-  resultsEl.hidden = results.length === 0;
+  resultsEl.hidden = results.length === 0 && failedList.length === 0;
   results.forEach((r) => {
     const li = document.createElement("li");
     li.className = "frow done";
@@ -393,46 +518,109 @@ function renderResults() {
     li.append(nm, meta, a);
     resultsEl.appendChild(li);
   });
+  failedList.forEach((f) => {
+    const li = document.createElement("li");
+    li.className = "frow dim";
+    const badge = document.createElement("span");
+    badge.className = "badge sm";
+    badge.textContent = "!";
+    badge.title = "Conversion failed";
+    const nm = document.createElement("span");
+    nm.className = "fn";
+    nm.textContent = f.name;
+    nm.title = f.name;
+    const meta = document.createElement("span");
+    meta.className = "fs";
+    meta.textContent = f.reason;
+    meta.title = f.reason;
+    li.append(badge, nm, meta);
+    resultsEl.appendChild(li);
+  });
   if (results.length === 1) {
     dl.href = results[0].url;
     dl.download = results[0].name;
     dl.hidden = false;
     dlAll.hidden = true;
-  } else {
+  } else if (results.length > 1) {
     dl.hidden = true;
     dlAll.hidden = false;
+  } else {
+    dl.hidden = true;
+    dlAll.hidden = true;
   }
   er.textContent = fmtSize(totalOut);
 }
 
-/** Large thumbnail card for the single-image case (hidden otherwise). */
+/** Large preview card for the single-file case (image thumb or audio player). */
 function renderSingleCard() {
-  const show = files.length === 1 && file && file.family === "image";
+  const show = files.length === 1 && !!file && (file.family === "image" || file.family === "audio");
   singleCard.hidden = !show;
   if (!show) return;
   const entry = file;
   const thumbBox = singleImg.parentElement;
   singleName.textContent = entry.name;
   singleName.title = entry.name;
+  let player = document.getElementById("single-audio");
+  const showAudio = entry.family === "audio";
+  if (player) player.hidden = !showAudio;
   // Rebuild thumb so a previous HEIC fallback can't leak into the next file.
   thumbBox.textContent = "";
-  if (entry.url) {
-    singleImg.hidden = false;
-    if (singleImg.getAttribute("src") !== entry.url) singleImg.src = entry.url;
-    singleImg.alt = entry.name;
-    singleImg.onerror = () => {
-      singleImg.hidden = true;
-      thumbBox.textContent = srcExtOf(entry.name);
-      thumbBox.appendChild(singleImg);
-    };
-    thumbBox.appendChild(singleImg);
-  } else {
+  if (showAudio) {
     singleImg.hidden = true;
     singleImg.removeAttribute("src");
-    thumbBox.textContent = srcExtOf(entry.name);
-    thumbBox.appendChild(singleImg);
+    const badge = document.createElement("span");
+    badge.className = "badge sm";
+    badge.textContent = srcExtOf(entry.name);
+    thumbBox.append(badge, singleImg);
+    if (player) {
+      try {
+        if (player.getAttribute("src") !== entry.url) player.src = entry.url || "";
+      } catch {
+        // ignore
+      }
+    }
+  } else {
+    if (entry.url) {
+      singleImg.hidden = false;
+      if (singleImg.getAttribute("src") !== entry.url) singleImg.src = entry.url;
+      singleImg.alt = entry.name;
+      singleImg.onerror = () => {
+        singleImg.hidden = true;
+        thumbBox.textContent = srcExtOf(entry.name);
+        thumbBox.appendChild(singleImg);
+      };
+      thumbBox.appendChild(singleImg);
+    } else {
+      singleImg.hidden = true;
+      singleImg.removeAttribute("src");
+      thumbBox.textContent = srcExtOf(entry.name);
+      thumbBox.appendChild(singleImg);
+    }
   }
   const metaBase = () => `${srcExtOf(entry.name)} · ${fmtSize(entry.size)} → ${activeTarget()}`;
+  if (entry.family === "audio") {
+    const cached = durCache.get(entry.hid);
+    const withRate = (base) =>
+      LOSSLESS_TARGETS.includes(activeTarget()) ? base : `${base} · ${bitrateLabel(+q.value, activeTarget())}`;
+    if (cached) {
+      singleMeta.textContent = withRate(`${metaBase()} · ${fmtDuration(cached)}`);
+    } else if (cached === null) {
+      singleMeta.textContent = withRate(metaBase());
+    } else if (durPending.has(entry.hid)) {
+      singleMeta.textContent = `${metaBase()} · …`;
+    } else {
+      singleMeta.textContent = `${metaBase()} · …`;
+      durPending.add(entry.hid);
+      const req = ++dimsReq;
+      getAudioDuration(entry.blob).then((d) => {
+        durPending.delete(entry.hid);
+        durCache.set(entry.hid, d || null);
+        if (req !== dimsReq || !file || file.hid !== entry.hid || singleCard.hidden) return;
+        singleMeta.textContent = d ? withRate(`${metaBase()} · ${fmtDuration(d)}`) : withRate(metaBase());
+      });
+    }
+    return;
+  }
   const cached = dimsCache.get(entry.hid);
   if (cached) {
     singleMeta.textContent = `${metaBase()} · ${cached.w} × ${cached.h}px`;
@@ -488,8 +676,9 @@ function renderRows() {
       targetsFor(entry.family).forEach((opt) => {
         const o = document.createElement("option");
         o.value = opt.v;
-        o.textContent = opt.v + (opt.soon ? ` (${(opt.label || "soon").toLowerCase()})` : "");
-        o.disabled = opt.soon;
+        const unsupportedAudio = entry.family === "audio" && !opt.soon && !supportsAudioTarget(opt.v);
+        o.textContent = opt.v + (opt.soon ? ` (${(opt.label || "soon").toLowerCase()})` : unsupportedAudio ? " (no support)" : "");
+        o.disabled = opt.soon || unsupportedAudio;
         if (opt.v === entry.target) o.selected = true;
         sel.append(o);
       });
@@ -547,7 +736,10 @@ function renderGrid() {
 
     const thumb = document.createElement("div");
     thumb.className = "thumb";
-    if (entry.url) {
+    if (entry.family === "audio") {
+      thumb.textContent = srcExtOf(entry.name);
+      thumb.setAttribute("aria-hidden", "true");
+    } else if (entry.url) {
       const img = document.createElement("img");
       img.src = entry.url;
       img.alt = "";
@@ -588,7 +780,7 @@ function renderGrid() {
   toChoose.disabled = files.length === 0 || busy;
   if (file) {
     renderActiveMeta();
-    syncTiles();
+    renderTiles();
     renderEstimate();
     renderRows();
   }
@@ -603,7 +795,7 @@ function refreshChoose() {
     return;
   }
   renderActiveMeta();
-  syncTiles();
+  renderTiles();
   // Measured result bars survive while results exist; estimates otherwise.
   if (results.length) {
     tr.textContent = activeTarget();
@@ -623,7 +815,7 @@ function select(i, focus) {
   activeIndex = i;
   syncActive();
   renderActiveMeta();
-  syncTiles();
+  renderTiles();
   renderEstimate();
   [...fileGrid.children].forEach((li, j) => li.setAttribute("aria-selected", String(j === activeIndex)));
   if (focus && fileGrid.children[activeIndex]) fileGrid.children[activeIndex].focus();
@@ -637,6 +829,8 @@ function removeAt(i) {
   if (rm) {
     dimsCache.delete(rm.hid);
     dimsPending.delete(rm.hid);
+    durCache.delete(rm.hid);
+    durPending.delete(rm.hid);
   }
   if (rm && rm.url) {
     try {
@@ -657,13 +851,28 @@ function removeAt(i) {
 
 function describeRejection(picked) {
   const kind = stubKind(picked);
-  if (kind === "audio" || kind === "video" || kind === "document")
-    return `${picked.name}: noted — ${kind} conversion is coming soon, listed for now.`;
-  return `${picked.name}: unsupported file type.`;
+  const seenType = String((picked && picked.type) || "") || "unknown type";
+  const seenExt = extOf(picked && picked.name) || "no extension";
+  if (kind === "video" || kind === "document")
+    return `${picked.name}: noted — ${kind} conversion is coming soon, listed for now. (saw ${seenType} / ${seenExt})`;
+  return `${picked.name}: unsupported file (saw ${seenType} / ${seenExt}) — images (PNG / JPG / SVG / WEBP / HEIC) or audio (MP3 / WAV / FLAC / AAC / OGG / M4A) only.`;
 }
 
 function entryDefault(family) {
   let t = defaultTargetFor(family, target);
+  if (family === "image") {
+    if (t === "WEBP" && !supportsWebp()) t = "JPG";
+    if (t === "HEIC") t = "JPG";
+    return t;
+  }
+  if (family === "audio") {
+    if (!AUDIO_CONVERTIBLE_TARGETS.includes(t)) t = "MP3";
+    if (!supportsAudioTarget(t)) {
+      if (supportsAudioTarget("MP3")) t = "MP3";
+      else t = "WAV";
+    }
+    return t;
+  }
   if (t === "WEBP" && !supportsWebp()) t = "JPG";
   return t;
 }
@@ -679,7 +888,13 @@ function addFiles(list) {
       continue;
     }
     if (!isKnown(picked)) {
-      rejected.push(describeRejection(picked));
+      const reason = describeRejection(picked);
+      try {
+        console.debug("[chameleon] rejected", { name: picked.name, type: picked.type, size: picked.size, reason });
+      } catch {
+        // ignore
+      }
+      rejected.push(reason);
       continue;
     }
     const hid = "h" + Date.now().toString(36) + "-" + seq++;
@@ -694,6 +909,11 @@ function addFiles(list) {
       family,
       target: entryDefault(family),
     });
+    try {
+      console.debug("[chameleon] staged", { name: picked.name, type: picked.type, size: picked.size, family });
+    } catch {
+      // ignore
+    }
     added++;
   }
   clearResults();
@@ -767,9 +987,12 @@ againBtn.addEventListener("click", () => {
 modeAll.addEventListener("click", () => {
   if (busy || !bulkAvailable()) return;
   mode = "bulk";
-  // One conversion for all: every image follows the global target.
+  // One conversion for all: every file follows the global target when it fits.
+  const fam = files.length ? files[0].family : null;
   files.forEach((f) => {
-    if (f.family === "image") f.target = REAL_TARGETS.includes(target) ? target : "WEBP";
+    if (f.family === "image" && REAL_TARGETS.includes(target)) f.target = target;
+    else if (f.family === "audio" && REAL_AUDIO_TARGETS.includes(target)) f.target = target;
+    else if (f.family === fam) f.target = entryDefault(f.family);
   });
   clearResults();
   refreshChoose();
@@ -801,28 +1024,6 @@ filerows.addEventListener("click", (e) => {
   if (li) select(+li.dataset.index, false);
 });
 
-tiles.forEach((b) =>
-  b.addEventListener("click", () => {
-    if (!file || busy) return;
-    target = b.dataset.f;
-    // Theme first: page accents + selected tile recolour even if a render below throws.
-    setFormatTheme(target);
-    if (mode === "bulk") {
-      files.forEach((f) => {
-        if (f.family === "image") f.target = target;
-      });
-    } else if (file.family === "image") {
-      file.target = target;
-    }
-    clearResults();
-    syncTiles();
-    renderEstimate();
-    renderRows();
-    renderGridSubs();
-    syncPageTheme();
-  })
-);
-
 function renderGridSubs() {
   fileGrid.querySelectorAll(".meta span").forEach((sub, j) => {
     const entry = files[j];
@@ -834,6 +1035,7 @@ q.addEventListener("input", () => {
   if (!file || busy) return;
   if (results.length) clearResults();
   renderEstimate();
+  if (isAudioEntry(file)) renderRows();
 });
 
 changeBtn.addEventListener("click", () => changeInput.click());
@@ -902,16 +1104,40 @@ btn.addEventListener("click", async () => {
       setProgress(base + span * 0.08, `Decoding ${entry.name}…${tag}`);
       setStatus(`Converting ${entry.name} → ${entry.target}${tag}…`);
       try {
-        const decoded = await decodeImage(entry.blob, entry.name);
-        setProgress(base + span * 0.35, `Encoding ${entry.name}…${tag}`);
-        await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 30)));
-        const blob = await encodeImage(decoded, entry.target, quality);
-        if (decoded && decoded.close) {
+        let blob;
+        let outNameFinal;
+        if (isAudioEntry(entry)) {
+          if (entry.target === "MP3") {
+            try {
+              await ensureLame();
+            } catch {
+              // MediaRecorder fallback covers it
+            }
+          }
+          const decoded = await decodeAudio(entry.blob);
+          setProgress(base + span * 0.35, `Encoding ${entry.name}…${tag}`);
+          await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 30)));
+          blob = await encodeAudio(decoded, entry.target, quality);
+          // AudioBuffers are GC'd; close piste not needed. Release decode refs.
           try {
-            decoded.close();
+            decoded.getChannelData(0);
           } catch {
             // ignore
           }
+          outNameFinal = outNameAudio(entry.name, entry.target);
+        } else {
+          const decoded = await decodeImage(entry.blob, entry.name);
+          setProgress(base + span * 0.35, `Encoding ${entry.name}…${tag}`);
+          await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 30)));
+          blob = await encodeImage(decoded, entry.target, quality);
+          if (decoded && decoded.close) {
+            try {
+              decoded.close();
+            } catch {
+              // ignore
+            }
+          }
+          outNameFinal = outName(entry.name, entry.target);
         }
         const url = URL.createObjectURL(blob);
         results.push({
@@ -919,7 +1145,7 @@ btn.addEventListener("click", async () => {
           blob,
           url,
           thumb: entry.url,
-          name: outName(entry.name, entry.target),
+          name: outNameFinal,
           size: blob.size,
           srcSize: entry.size,
           target: entry.target,
@@ -934,7 +1160,20 @@ btn.addEventListener("click", async () => {
         else if (code === "webp-unsupported")
           reason = "WebP encoding isn't supported in this browser — try JPG";
         else if (code === "heic-output-unsupported") reason = "HEIC output isn't supported — pick another format";
-        failed.push(`${entry.name} (${reason})`);
+        else if (code === "mp3-unsupported") reason = "MP3 encoding isn't supported in this browser — try WAV";
+        else if (code === "ogg-unsupported") reason = "OGG encoding isn't supported in this browser — try WAV or MP3";
+        else if (code === "flac-unsupported") reason = "FLAC encoding isn't supported in this browser — try WAV";
+        else if (code === "aac-unsupported") reason = "AAC encoding isn't supported in this browser — try WAV or MP3";
+        else if (code === "m4a-unsupported") reason = "M4A encoding isn't supported in this browser — try WAV or MP3";
+        else if (code === "encode-unsupported" || code === "encode-timeout")
+          reason = `${entry.target} encoding isn't supported in this browser — try WAV`;
+        else if (code === "webaudio-unsupported") reason = "audio decoding isn't supported in this browser";
+        try {
+          console.debug("[chameleon] convert failed", { name: entry.name, target: entry.target, code, reason });
+        } catch {
+          // ignore
+        }
+        failed.push({ name: entry.name, reason });
         setProgress(base + span, `Skipped ${entry.name}${tag}`);
       }
     }
@@ -943,9 +1182,16 @@ btn.addEventListener("click", async () => {
     syncTileAvailability();
     q.disabled = false;
     toChoose.disabled = false;
-    renderResults();
+    renderResults(failed);
     renderMeasured();
     refreshChoose();
+    if (failed.length) {
+      setStatus(
+        failed.length === 1
+          ? `Couldn't convert ${failed[0].name}: ${failed[0].reason}`
+          : `${failed.length} files couldn't be converted — see Download tab for reasons.`
+      );
+    }
     goTab(3);
     // Best-effort auto-download of every result; blockers fall back to buttons.
     for (const r of results) {
@@ -1011,22 +1257,35 @@ async function loadStaged() {
       target: entryDefault(family),
     });
   });
-  if (!tiles.some((b) => b.dataset.f === target)) target = "WEBP";
+  if (!tiles.some((b) => b.dataset.f === target)) {
+    // Keep staged targets when they belong to the other family; renderTiles
+    // validates per-family below.
+    const up = String(target || "").toUpperCase();
+    if (![...REAL_TARGETS, ...REAL_AUDIO_TARGETS, "HEIC"].includes(up)) target = "WEBP";
+  }
 }
 
 await loadStaged();
-syncTileAvailability();
+// Per-family fallbacks mirror the photo WEBP/HEIC pattern.
 if (!supportsWebp()) {
   if (target === "WEBP") target = "JPG";
   files.forEach((f) => {
-    if (f.target === "WEBP") f.target = "JPG";
+    if (f.family === "image" && f.target === "WEBP") f.target = "JPG";
   });
 }
 // HEIC is input-only — never a valid output target.
 if (target === "HEIC") target = "JPG";
 files.forEach((f) => {
-  if (f.target === "HEIC") f.target = "JPG";
+  if (f.family === "image" && f.target === "HEIC") f.target = "JPG";
 });
+files.forEach((f) => {
+  if (f.family === "audio" && !supportsAudioTarget(f.target)) {
+    f.target = supportsAudioTarget("MP3") ? "MP3" : "WAV";
+  }
+});
+if (target && files.length === 0) {
+  if (![...REAL_TARGETS, ...REAL_AUDIO_TARGETS].includes(target)) target = "WEBP";
+}
 setFormatTheme(target);
 if (files.length) {
   syncActive();
