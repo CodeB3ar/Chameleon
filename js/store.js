@@ -24,7 +24,10 @@ function openDb() {
       const db = req.result;
       if (!db.objectStoreNames.contains(TABLE)) db.createObjectStore(TABLE);
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      memMode = false;
+      resolve(req.result);
+    };
     req.onerror = () => {
       memMode = true;
       reject(req.error || new Error("idb-open-failed"));

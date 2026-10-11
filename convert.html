@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Chameleon — Convert a PNG</title>
-  <link rel="stylesheet" href="css/style.css?v=11" />
+   <link rel="stylesheet" href="css/style.css?v=15" />
 </head>
 <body>
   <div class="pg" data-format="webp">
@@ -19,7 +19,7 @@
           <a class="nl" href="convert.html" scramble-link><span class="dekor dekor-tr" aria-hidden="true"></span><span class="dekor dekor-bl" aria-hidden="true"></span><span scramble-text data-text="Convert">Convert</span></a>
           <a class="nl" href="faq.html" scramble-link><span class="dekor dekor-tr" aria-hidden="true"></span><span class="dekor dekor-bl" aria-hidden="true"></span><span scramble-text data-text="FAQ">FAQ</span></a>
         </nav>
-        <a class="btn" href="#convert">Convert now</a>
+        <a class="btn" href="#convert">Convert<span class="btn-now"> now</span></a>
       </div>
     </header>
     <main>
@@ -28,7 +28,7 @@
         <div class="cols2">
           <div class="main"><div class="panel c">
             <div class="steps" role="tablist" aria-label="Progress" id="steps">
-              <button class="st" role="tab" type="button" id="tab1" aria-selected="false" aria-controls="view-drop">01 Drop</button><button class="st" role="tab" type="button" id="tab2" aria-selected="true" aria-controls="view-choose">02 Choose + Convert</button><button class="st" role="tab" type="button" id="tab3" aria-selected="false" aria-controls="view-dl">03 Download</button>
+              <button class="st" role="tab" type="button" id="tab1" aria-selected="false" aria-controls="view-drop">01 Drop</button><button class="st" role="tab" type="button" id="tab2" aria-selected="true" aria-controls="view-choose" title="02 Choose + Convert">02 <span class="st-extra">Choose + </span>Convert</button><button class="st" role="tab" type="button" id="tab3" aria-selected="false" aria-controls="view-dl">03 Download</button>
             </div>
             <div id="view-drop" role="tabpanel" aria-labelledby="tab1">
               <div id="drop-empty">
@@ -37,7 +37,7 @@
                   <strong>Drag &amp; Drop your file here</strong>
                   <span class="cap">or</span>
                   <button class="btn dk" type="button" id="empty-browse-btn">Choose file</button>
-                  <span class="cap">Images, audio, video and documents</span>
+                  <span class="cap">Images, audio, video and documents · Up to 20 files · Video 1 GB desktop / 200 MB phone · Others 50 MB</span>
                 </div>
               </div>
               <ul class="flist" id="file-grid" role="listbox" aria-label="Staged files" hidden></ul>
@@ -51,7 +51,7 @@
             </div>
             <div id="view-choose" role="tabpanel" aria-labelledby="tab2">
               <div class="fcard hero-card" id="single-card" hidden>
-                <div class="hero-thumb"><img id="single-img" alt=""></div>
+                <div class="hero-thumb"><img id="single-img" alt=""><video id="single-video" muted playsinline preload="metadata" hidden></video></div>
                 <div class="fcard-body"><div class="nm" id="single-name">—</div><div class="cap" id="single-meta">—</div>
                   <audio id="single-audio" preload="metadata"></audio>
                   <div class="player" id="single-player" hidden>
@@ -65,7 +65,7 @@
               </div>
               <div class="blk" id="show-blk" hidden>
                 <div class="seg" role="group" aria-label="File list mode" id="mode-seg">
-                  <button class="segbtn on" type="button" id="mode-all" aria-pressed="true">All files · 0</button>
+                  <button class="segbtn on" type="button" id="mode-all" aria-pressed="true" title="All files">All<span class="seg-extra"> files</span> · 0</button>
                   <button class="segbtn" type="button" id="mode-manual" aria-pressed="false">Custom</button>
                 </div>
                 <p class="hint" id="mode-note" hidden></p>
@@ -80,12 +80,13 @@
                 <div class="qline">
                   <input id="q" type="range" min="1" max="100" value="82" aria-label="Quality">
                 </div>
-                <button class="btn" type="button" id="btn">Convert to WEBP &rarr;</button>
+                <button class="btn" type="button" id="btn" title="Convert to WEBP">Convert<span class="btn-extra"> to</span> WEBP &rarr;</button>
               </div>
               <div class="prog" id="prog" hidden>
                 <div class="bar" role="progressbar" aria-label="Conversion progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="pbarwrap"><i id="pbar" style="width:0%"></i></div>
                 <span class="cap" id="plabel">Converting…</span>
               </div>
+              <div class="cap" id="convert-status" role="status" aria-live="polite" style="margin-top:12px"></div>
             </div>
             <div id="view-dl" role="tabpanel" aria-labelledby="tab3" hidden>
               <div class="fcard">
@@ -96,10 +97,10 @@
               <div class="go actions">
                 <div class="actions-left">
                   <button class="btn gh" type="button" id="back-settings">← Back</button>
-                  <button class="btn gh" type="button" id="again-btn">Convert another file</button>
+                  <button class="btn gh" type="button" id="again-btn" title="Convert another file">Convert<span class="btn-extra"> another file</span></button>
                 </div>
                 <a class="btn" id="dl" href="#" download>Download →</a>
-                <button class="btn dk" type="button" id="dl-all" hidden>Download all →</button>
+                <button class="btn dk" type="button" id="dl-all" hidden title="Download all">Download<span class="btn-extra"> all</span> →</button>
               </div>
             </div>
           </div></div>
@@ -116,22 +117,20 @@
       <div class="wrap">
         <div class="fgrid">
           <div>
-            <a class="brand" href="index.html" style="color:#f6f6f6">
+            <a class="brand" href="index.html">
               <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true"><rect width="34" height="34" rx="9" style="fill:var(--o)"></rect><path d="M9 21c0-6 5-9 9-7s4 8-1 8-5-5-1-5" fill="none" stroke="#161616" stroke-width="2.6" stroke-linecap="round"></path><circle cx="24" cy="12" r="2" fill="#161616"></circle></svg>
               Chameleon
             </a>
-            <p style="max-width:300px;margin:16px 0 0;font-size:14px;color:#bdbdbd">A calm, fast file converter that adapts to whatever you drop in.</p>
+            <p class="ftag">A calm, fast file converter that adapts to whatever you drop in.</p>
           </div>
           <div><div class="fh">Product</div><a class="fl" href="index.html#formats">Formats</a><a class="fl" href="index.html#how">How it works</a><a class="fl" href="faq.html">FAQ</a></div>
-          <div><div class="fh">Company</div><a class="fl" href="#">About</a><a class="fl" href="#">Blog</a><a class="fl" href="#">Contact</a></div>
-          <div><div class="fh">Legal</div><a class="fl" href="#">Privacy</a><a class="fl" href="#">Terms</a></div>
         </div>
-        <div class="mark disp" scramble-link scramble-text data-text="Chameleon" data-glyphs="upper" title="Hover to scramble">Chameleon</div>
-        <div class="copy"><span>© 2026 CHAMELEON. ALL RIGHTS RESERVED.</span><span>MADE FOR EVERY FORMAT</span></div>
+        <button class="mark disp" type="button" scramble-link scramble-text data-text="Chameleon" data-glyphs="upper" title="Tap to scramble" aria-label="Chameleon — activate to scramble">Chameleon</button>
+        <div class="copy"><span>© 2026 Chameleon. All rights reserved.</span></div>
       </div>
     </footer>
   </div>
 
-  <script type="module" src="./js/convert-page.js?v=6"></script>
+  <script type="module" src="./js/convert-page.js?v=12"></script>
 </body>
 </html>

@@ -103,6 +103,7 @@ export function initScramble() {
         s.className = "sc-char";
         s.dataset.ch = ch;
         s.textContent = ch;
+        s.setAttribute("aria-hidden", "true");
         el.appendChild(s);
         cells.push(s);
       }
@@ -116,6 +117,9 @@ export function initScramble() {
       link.addEventListener("mouseenter", () => states.forEach((s) => run(s, LTR, DURATION_IN)));
       link.addEventListener("mouseleave", () => states.forEach((s) => run(s, RTL, DURATION_OUT)));
     }
+    // Touch / mobile: no hover, so tap (click) replays the scramble.
+    // Harmless on desktop — a click after hover just re-runs the intro.
+    link.addEventListener("click", () => states.forEach((s) => run(s, LTR, DURATION_IN)));
 
     if (link.hasAttribute("data-scramble-autoplay")) {
       let played = false;

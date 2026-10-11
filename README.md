@@ -20,7 +20,8 @@ No build step, no dependencies — plain HTML, CSS, and JavaScript.
 chameleon/
 ├── index.html      # homepage (header, hero, converter shell, marquee, ecosystem, footer)
 ├── css/style.css   # offline style system (tokens, grid, notch, hover leave-states)
-├── js/app.js       # shell wiring (dropzone, picker, chips, queue mock, status)
+├── js/home.js      # homepage wiring (dropzone, picker, chips, queue, staging handoff)
+├── js/convert-page.js # convert page (drop, choose, progress, download)
 ├── js/scramble.js  # directional hover scramble engine (vanilla, offline-safe)
 ├── js/convert.js   # conversion stub (support check only for now)
 ├── assets/         # logo + vendored fonts (LabsAmiga, RobotoMono)
@@ -41,8 +42,8 @@ chameleon/
 - [x] Real image conversion (PNG / JPG / SVG / WEBP in, HEIC input-only, canvas-based, 100% local)
 - [x] Real audio conversion (MP3 / WAV / OGG / AAC / M4A, Web Audio decode, hand-rolled WAV, vendored LAME MP3, 100% local)
 - [x] Real document conversion (TXT / MD / RTF / PDF / DOCX / EPUB, hand-rolled text transforms + PDF writer + ZIP, vendored pdf.js text extraction + tesseract OCR for scanned PDFs, 100% local)
+- [x] Real video conversion (MP4 / WEBM native via &lt;video&gt; + canvas + MediaRecorder, MOV / MKV / AVI via optional on-demand vendored ffmpeg remux, quality slider maps to 480p–4K resolution rungs, 100% local)
 - [x] Batch download / save button
-- [ ] Video conversion stubs
 
 ## License
 

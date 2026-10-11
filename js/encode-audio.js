@@ -73,18 +73,28 @@ export function ensureLame() {
   if (hasLame()) return Promise.resolve(true);
   if (lamePromise) return lamePromise;
   lamePromise = new Promise((resolve) => {
+    let done = false;
+    const finish = (ok) => {
+      if (done) return;
+      done = true;
+      resolve(ok);
+    };
     try {
       const s = document.createElement("script");
-      s.src = "./assets/vendor/lame.min.js";
+      s.src = new URL("../assets/vendor/lame.min.js", import.meta.url).href;
       s.async = true;
-      s.onload = () => resolve(hasLame());
-      s.onerror = () => resolve(false);
+      s.onload = () => finish(hasLame());
+      s.onerror = () => finish(false);
       document.head.appendChild(s);
       // Don't hang conversion on vendor load.
-      setTimeout(() => resolve(hasLame()), 4000);
+      setTimeout(() => finish(hasLame()), 4000);
     } catch {
-      resolve(false);
+      finish(false);
     }
+  });
+  // A failed load must be retryable — never poison MP3 until reload.
+  lamePromise.then((ok) => {
+    if (!ok) lamePromise = null;
   });
   return lamePromise;
 }

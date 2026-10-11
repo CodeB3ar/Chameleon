@@ -11,17 +11,20 @@ import { initScramble } from "./scramble.js";
 import { getStaged, stagedTargetFallback, clearStaged } from "./store.js";
 import {
   isSupported,
-  stubKind,
   fmtSize,
   extOf,
   familyOf,
-  isKnown,
   targetsFor,
   defaultTargetFor,
   CONVERTIBLE_TARGETS,
   AUDIO_CONVERTIBLE_TARGETS,
   DOC_CONVERTIBLE_TARGETS,
-} from "./convert.js?v=2";
+  VIDEO_CONVERTIBLE_TARGETS,
+  shortName,
+  MAX_FILES,
+  limitFor,
+  limitLabelFor,
+} from "./convert.js?v=4";
 import { decodeImage, encodeImage, supportsWebp, getImageDimensions, outName } from "./encode.js";
 import {
   decodeDoc,
@@ -43,12 +46,23 @@ import {
   outNameAudio,
   LOSSLESS_TARGETS,
 } from "./encode-audio.js";
+import {
+  decodeVideo,
+  encodeVideo,
+  closeVideo,
+  supportsVideoTarget,
+  ensureFfmpeg,
+  getVideoMetadata,
+  fmtVideoDuration,
+  videoQualityLabel,
+  outNameVideo,
+} from "./encode-video.js?v=3";
 
-const MAX_FILES = 10;
 const GRID_FROM = 3; // < GRID_FROM files: long banner; >= GRID_FROM: grid
-const REAL_TARGETS = ["PNG", "JPG", "SVG", "WEBP"];
-const REAL_AUDIO_TARGETS = ["MP3", "WAV", "OGG", "AAC", "M4A"];
-const REAL_DOC_TARGETS = ["TXT", "MD", "RTF", "PDF", "DOCX", "EPUB"];
+const REAL_TARGETS = CONVERTIBLE_TARGETS;
+const REAL_AUDIO_TARGETS = AUDIO_CONVERTIBLE_TARGETS;
+const REAL_DOC_TARGETS = DOC_CONVERTIBLE_TARGETS;
+const REAL_VIDEO_TARGETS = VIDEO_CONVERTIBLE_TARGETS;
 // Shell estimate weights (used until a real conversion measures bytes).
 // SVG wraps a PNG raster as base64, so it runs larger than the source.
 const WEIGHTS = { PNG: 1.0, JPG: 0.45, SVG: 1.35, WEBP: 0.35 };
@@ -58,6 +72,9 @@ const AUDIO_WEIGHTS = { MP3: 0.32, AAC: 0.3, OGG: 0.27, M4A: 0.3, WAV: 1.4 };
 // Document weights: markup/container overhead per target. Quality scales
 // PDF only (embedded-image fidelity); pure-text targets ignore it.
 const DOC_WEIGHTS = { TXT: 0.9, MD: 1.0, RTF: 1.25, PDF: 1.1, DOCX: 1.15, EPUB: 1.2 };
+// Video weights: container overhead per target. Quality scales every video
+// target via the resolution rung (480p–4K cap); higher rungs ≈ larger files.
+const VIDEO_WEIGHTS = { MP4: 0.9, WEBM: 0.7, MOV: 1.0, MKV: 0.95, AVI: 1.25 };
 const BASE = 1.2;
 
 const $ = (id) => document.getElementById(id);
@@ -81,6 +98,7 @@ const singleImg = $("single-img");
 const singleName = $("single-name");
 const singleMeta = $("single-meta");
 const singleAudio = $("single-audio");
+const singleVideo = $("single-video");
 const singlePlayer = $("single-player");
 const ppToggle = $("pp-toggle");
 const ppCur = $("pp-cur");
@@ -142,6 +160,8 @@ const dimsCache = new Map(); // hid -> { w, h } | null (null = undecodable here)
 const dimsPending = new Set(); // hids with an in-flight dimension decode
 const durCache = new Map(); // hid -> seconds | null
 const durPending = new Set();
+const vidCache = new Map(); // hid -> { w, h, duration } | null
+const vidPending = new Set();
 let dimsReq = 0;
 
 function setStatus(msg) {
@@ -162,6 +182,7 @@ function setFormatTheme(fmt) {
     png: "png", jpg: "jpg", jpeg: "jpg", svg: "svg", webp: "webp",
     mp3: "mp3", wav: "wav", ogg: "ogg", aac: "aac", m4a: "m4a",
     txt: "txt", md: "md", rtf: "rtf", pdf: "pdf", docx: "docx", epub: "epub",
+    mp4: "mp4", webm: "webm", mov: "mov", mkv: "mkv", avi: "avi",
   };
   const next = map[String(fmt || "").toLowerCase()];
   if (!next) return;
@@ -185,6 +206,7 @@ function convertible(entry) {
   if (entry.family === "image") return CONVERTIBLE_TARGETS.includes(entry.target);
   if (entry.family === "audio") return AUDIO_CONVERTIBLE_TARGETS.includes(entry.target);
   if (entry.family === "document") return DOC_CONVERTIBLE_TARGETS.includes(entry.target);
+  if (entry.family === "video") return VIDEO_CONVERTIBLE_TARGETS.includes(entry.target);
   return false;
 }
 
@@ -194,6 +216,10 @@ function isAudioEntry(entry) {
 
 function isDocEntry(entry) {
   return !!entry && entry.family === "document";
+}
+
+function isVideoEntry(entry) {
+  return !!entry && entry.family === "video";
 }
 
 /** Quality slider is meaningless for pure-text doc targets (mirrors lossless). */
@@ -220,14 +246,15 @@ function syncMode() {
   modeManual.classList.toggle("on", mode === "manual");
   modeAll.setAttribute("aria-pressed", String(mode === "bulk"));
   modeManual.setAttribute("aria-pressed", String(mode === "manual"));
-  modeAll.innerHTML = `All files &middot; ${files.length}`;
+  modeAll.innerHTML = `All<span class="seg-extra"> files</span> &middot; ${files.length}`;
+  modeAll.title = `All files · ${files.length}`;
   modeNote.hidden = ok;
   if (!ok && files.length) {
     modeNote.textContent = "Mixed file types — bulk is locked. Set each file with Custom.";
     modeNote.hidden = false;
   }
   // Tiles/quality drive bulk conversion; hide them when bulk can't act.
-  const showBulkCtrls = mode === "bulk" && ok && files.some((f) => convertible(f) || f.family === "image" || f.family === "audio" || f.family === "document");
+  const showBulkCtrls = mode === "bulk" && ok && files.some((f) => convertible(f));
   tilesBlk.hidden = !showBulkCtrls && !(mode === "manual" && files.length === 1);
   // Text has no quality axis — hide the slider when every convertible job
   // ignores it (mirrors how lossless targets ignore quality).
@@ -274,7 +301,10 @@ function thumbUrl(blob, type, name) {
   const isAudio =
     t.startsWith("audio/") ||
     [".mp3", ".wav", ".aac", ".ogg", ".oga", ".opus", ".m4a", ".weba", ".3gp"].some((e) => n.endsWith(e));
-  if (!isImg && !isAudio) return null;
+  const isVideo =
+    t.startsWith("video/") ||
+    [".mp4", ".mov", ".webm", ".mkv", ".avi"].some((e) => n.endsWith(e));
+  if (!isImg && !isAudio && !isVideo) return null;
   try {
     return URL.createObjectURL(blob);
   } catch {
@@ -309,7 +339,16 @@ function estimateKBFor(entry) {
     const qf = entry.target === "PDF" ? 0.6 + (0.6 * v) / 100 : 1;
     return ((srcKB * w) / BASE) * qf;
   }
-  return (srcKB * (WEIGHTS[entry.target] || 0.4)) / BASE * (0.4 + (0.98 * v) / 100);
+  if (isVideoEntry(entry)) {
+    const w = VIDEO_WEIGHTS[entry.target] || 0.9;
+    // Resolution rung: 480p shrinks a lot, 4K keeps (or grows) the source.
+    const qf = 0.35 + (1.85 * v) / 100;
+    return ((srcKB * w) / BASE) * qf;
+  }
+  const w = WEIGHTS[entry.target] || 0.4;
+  // PNG output ignores quality (encodeImage passes undefined) — don't scale the estimate.
+  const qf = entry.target === "PNG" ? 1 : 0.4 + (0.98 * v) / 100;
+  return ((srcKB * w) / BASE) * qf;
 }
 
 function fmtKB(kb) {
@@ -328,12 +367,13 @@ function onTileClick(fmt) {
   // Theme first: page accents + selected tile recolour even if a render below throws.
   setFormatTheme(target);
   const fam = tilesFamily();
-  if (mode === "bulk") {
+    if (mode === "bulk") {
     files.forEach((f) => {
       if (f.family !== fam) return;
       if (fam === "image" && REAL_TARGETS.includes(target)) f.target = target;
       if (fam === "audio" && REAL_AUDIO_TARGETS.includes(target)) f.target = target;
       if (fam === "document" && REAL_DOC_TARGETS.includes(target)) f.target = target;
+      if (fam === "video" && REAL_VIDEO_TARGETS.includes(target)) f.target = target;
     });
   } else if (file.family === fam) {
     file.target = target;
@@ -348,13 +388,20 @@ function onTileClick(fmt) {
 
 function renderTiles() {
   const fam = tilesFamily();
-  const defs = fam === "audio" ? REAL_AUDIO_TARGETS : fam === "document" ? REAL_DOC_TARGETS : [...REAL_TARGETS, "HEIC"];
+  const defs = fam === "audio" ? REAL_AUDIO_TARGETS : fam === "document" ? REAL_DOC_TARGETS : fam === "video" ? REAL_VIDEO_TARGETS : [...REAL_TARGETS, "HEIC"];
   // Scale the grid to the tile count so every family fits one row
   // (documents render six tiles where the CSS default holds five).
   // Small screens keep the CSS 3-column wrap — six cramped tiles help nobody.
+  // Mid band (561–700px): six tiles wrap 3+3, five tiles cap at four —
+  // same cutoffs as the stylesheet, re-evaluated on breakpoint changes below.
   try {
     const narrow = window.matchMedia && window.matchMedia("(max-width:560px)").matches;
-    tilesEl.style.gridTemplateColumns = narrow ? "" : `repeat(${defs.length},minmax(0,1fr))`;
+    const mid = !narrow && window.matchMedia && window.matchMedia("(max-width:700px)").matches;
+    tilesEl.style.gridTemplateColumns = narrow
+      ? ""
+      : mid
+        ? `repeat(${defs.length >= 6 ? 3 : Math.min(defs.length, 4)},minmax(0,1fr))`
+        : `repeat(${defs.length},minmax(0,1fr))`;
   } catch {
     // CSS default covers it
   }
@@ -372,6 +419,26 @@ function renderTiles() {
   tiles = [...tilesEl.querySelectorAll(".tile")];
   syncTiles();
   syncTileAvailability();
+}
+
+// Keep tile columns in lockstep with the stylesheet across resizes and
+// rotations (same 560/700px cutoffs as renderTiles and style.css).
+try {
+  const mqNarrow = window.matchMedia && window.matchMedia("(max-width:560px)");
+  const mqMid = window.matchMedia && window.matchMedia("(max-width:700px)");
+  const onBpChange = () => {
+    try {
+      renderTiles();
+    } catch {
+      // next render covers it
+    }
+  };
+  if (mqNarrow && mqNarrow.addEventListener) {
+    mqNarrow.addEventListener("change", onBpChange);
+    if (mqMid) mqMid.addEventListener("change", onBpChange);
+  }
+} catch {
+  // static render covers it
 }
 
 function syncTiles() {
@@ -443,24 +510,57 @@ function syncTileAvailability() {
         labelTile(b, "NO SUPPORT");
       }
     });
+    return;
+  }
+  if (fam === "video") {
+    tiles.forEach((b) => {
+      if (!supportsVideoTarget(b.dataset.f)) {
+        b.disabled = true;
+        const needsVendor = ["MOV", "MKV", "AVI"].includes(b.dataset.f);
+        if (needsVendor) {
+          // Accepted as input, but this browser can't *produce* the
+          // container without the optional vendor build — same INPUT ONLY
+          // pattern as HEIC. (Input is always attempted; an unreadable
+          // file surfaces an honest error at convert time.)
+          b.title = `${b.dataset.f} is input-only here — drop one in and convert it to ${supportsVideoTarget("MP4") ? "MP4" : "WEBM"}. Producing ${b.dataset.f} files needs the optional local encoder (vendored ffmpeg).`;
+          labelTile(b, "INPUT ONLY");
+        } else {
+          b.title = `${b.dataset.f} encoding isn't supported in this browser — try ${supportsVideoTarget("MP4") ? "MP4" : "WEBM"}.`;
+          labelTile(b, "NO SUPPORT");
+        }
+      }
+    });
   }
 }
 
 function syncConvertBtn() {
   const n = convertibleCount();
   btn.disabled = n === 0 || busy;
+  const multi = files.length > 1;
   btn.innerHTML =
-    files.length > 1 ? `Convert ${n} file${n === 1 ? "" : "s"} &rarr;` : `Convert to ${activeTarget()} &rarr;`;
+    multi ? `Convert ${n} file${n === 1 ? "" : "s"} &rarr;` : `Convert<span class="btn-extra"> to</span> ${activeTarget()} &rarr;`;
+  btn.setAttribute("aria-label", multi ? `Convert ${n} file${n === 1 ? "" : "s"}` : `Convert to ${activeTarget()}`);
   btn.title =
-    n === 0 ? "Nothing convertible yet — images convert to PNG / JPG / SVG / WEBP, audio to MP3 / WAV / OGG / AAC / M4A, documents to TXT / MD / RTF / PDF / DOCX / EPUB." : "";
+    n === 0 ? "Nothing convertible yet — images convert to PNG / JPG / SVG / WEBP, audio to MP3 / WAV / OGG / AAC / M4A, documents to TXT / MD / RTF / PDF / DOCX / EPUB, video to MP4 / WEBM / MOV / MKV / AVI." : multi ? "" : `Convert to ${activeTarget()}`;
 }
 
 function renderEstimate() {
   const at = activeTarget();
   const v = +q.value;
   const audioActive = !!file && isAudioEntry(file);
-  qv.textContent = audioActive && !LOSSLESS_TARGETS.includes(at) ? `${v}% · ${bitrateLabel(v, at)}` : v + "%";
-  qr.textContent = audioActive && !LOSSLESS_TARGETS.includes(at) ? `${v} · ${bitrateLabel(v, at)}` : v;
+  const videoActive = !!file && isVideoEntry(file);
+  qv.textContent =
+    audioActive && !LOSSLESS_TARGETS.includes(at)
+      ? `${v}% · ${bitrateLabel(v, at)}`
+      : videoActive
+        ? `${v}% · ${videoQualityLabel(v)}`
+        : v + "%";
+  qr.textContent =
+    audioActive && !LOSSLESS_TARGETS.includes(at)
+      ? `${v} · ${bitrateLabel(v, at)}`
+      : videoActive
+        ? `${v} · ${videoQualityLabel(v)}`
+        : v;
   tr.textContent = at;
   // Multi-file: aggregate totals across convertible files (mixed types
   // included) instead of showing the active file alone.
@@ -550,8 +650,9 @@ function renderResults(failed = []) {
   // "Unsupported" = never attempted (stub family); "failed" = attempted but errored.
   const unsupported = files.filter((f) => !convertible(f)).length;
   rname.textContent = `${results.length} file${results.length === 1 ? "" : "s"} converted`;
-  const qSuffix = results.some((r) => AUDIO_CONVERTIBLE_TARGETS.includes(r.target) && !LOSSLESS_TARGETS.includes(r.target))
-    ? `quality ${q.value} · ${bitrateLabel(+q.value, results[0].target)}`
+  const lossyAudio = results.filter((r) => AUDIO_CONVERTIBLE_TARGETS.includes(r.target) && !LOSSLESS_TARGETS.includes(r.target));
+  const qSuffix = lossyAudio.length
+    ? `quality ${q.value} · ${[...new Set(lossyAudio.map((r) => bitrateLabel(+q.value, r.target)))].join(" / ")}`
     : `quality ${q.value}`;
   rmeta.textContent =
     `${fmtSize(totalIn)} → ${fmtSize(totalOut)} · ${qSuffix}` +
@@ -565,7 +666,7 @@ function renderResults(failed = []) {
     li.append(thumbOrBadge(r.thumb, r.name));
     const nm = document.createElement("span");
     nm.className = "fn";
-    nm.textContent = r.name;
+    nm.textContent = shortName(r.name);
     nm.title = r.name;
     const meta = document.createElement("span");
     meta.className = "fs";
@@ -587,7 +688,7 @@ function renderResults(failed = []) {
     badge.title = "Conversion failed";
     const nm = document.createElement("span");
     nm.className = "fn";
-    nm.textContent = f.name;
+    nm.textContent = shortName(f.name);
     nm.title = f.name;
     const meta = document.createElement("span");
     meta.className = "fs";
@@ -743,22 +844,42 @@ if (ppMute && singleAudio) {
   });
 }
 
-/** Large preview card: image thumb, audio player, or document ext badge. */
+/** Stop the single-card video preview and release its element state. */
+function vidStop() {
+  if (!singleVideo) return;
+  try {
+    singleVideo.pause();
+  } catch {
+    // ignore
+  }
+  try {
+    singleVideo.removeAttribute("src");
+    singleVideo.load();
+  } catch {
+    // ignore
+  }
+  singleVideo.hidden = true;
+}
+
+/** Large preview card: image thumb, audio player, muted video, or doc badge. */
 function renderSingleCard() {
-  const show = files.length === 1 && !!file && (file.family === "image" || file.family === "audio" || file.family === "document");
+  const show = files.length === 1 && !!file && (file.family === "image" || file.family === "audio" || file.family === "document" || file.family === "video");
   singleCard.hidden = !show;
   if (!show) {
     ppStop();
+    vidStop();
     return;
   }
   const entry = file;
   const thumbBox = singleImg.parentElement;
-  singleName.textContent = entry.name;
+  singleName.textContent = shortName(entry.name);
   singleName.title = entry.name;
   const showAudio = entry.family === "audio";
   const showDoc = entry.family === "document";
+  const showVideo = entry.family === "video";
   if (singlePlayer) singlePlayer.hidden = !showAudio;
   if (!showAudio) ppStop();
+  if (!showVideo) vidStop();
   // Rebuild thumb so a previous HEIC fallback can't leak into the next file.
   thumbBox.textContent = "";
   if (showDoc) {
@@ -771,11 +892,34 @@ function renderSingleCard() {
   } else if (showAudio) {
     singleImg.hidden = true;
     singleImg.removeAttribute("src");
+    if (singleVideo) singleVideo.hidden = true;
     const badge = document.createElement("span");
     badge.className = "badge lg";
     badge.textContent = srcExtOf(entry.name);
     thumbBox.append(badge, singleImg);
+    if (singleVideo) thumbBox.appendChild(singleVideo);
     ppLoad(entry.url);
+  } else if (showVideo) {
+    // Muted inline preview (mirrors the audio player precedent): the
+    // element is the preview engine, never autoplayed.
+    singleImg.hidden = true;
+    singleImg.removeAttribute("src");
+    if (singleVideo) {
+      singleVideo.hidden = false;
+      if (entry.url && singleVideo.getAttribute("src") !== entry.url) {
+        try {
+          singleVideo.src = entry.url;
+        } catch {
+          // unreadable here — meta line still renders below
+        }
+      }
+      thumbBox.append(singleVideo, singleImg);
+    } else {
+      const badge = document.createElement("span");
+      badge.className = "badge lg";
+      badge.textContent = srcExtOf(entry.name);
+      thumbBox.append(badge, singleImg);
+    }
   } else {
     if (entry.url) {
       singleImg.hidden = false;
@@ -822,6 +966,31 @@ function renderSingleCard() {
         durCache.set(entry.hid, d || null);
         if (req !== dimsReq || !file || file.hid !== entry.hid || singleCard.hidden) return;
         singleMeta.textContent = d ? withRate(`${metaBase()} · ${fmtDuration(d)}`) : withRate(metaBase());
+      });
+    }
+    return;
+  }
+  if (entry.family === "video") {
+    const withRung = (base) => `${base} · ${videoQualityLabel(+q.value)}`;
+    const paint = (m) => {
+      if (!m) return withRung(metaBase());
+      const dim = `${m.w} × ${m.h}px`;
+      return m.duration ? withRung(`${metaBase()} · ${dim} · ${fmtVideoDuration(m.duration)}`) : withRung(`${metaBase()} · ${dim}`);
+    };
+    const cached = vidCache.get(entry.hid);
+    if (cached || cached === null) {
+      singleMeta.textContent = paint(cached);
+    } else if (vidPending.has(entry.hid)) {
+      singleMeta.textContent = `${metaBase()} · …`;
+    } else {
+      singleMeta.textContent = `${metaBase()} · …`;
+      vidPending.add(entry.hid);
+      const req = ++dimsReq;
+      getVideoMetadata(entry.blob).then((m) => {
+        vidPending.delete(entry.hid);
+        vidCache.set(entry.hid, m || null);
+        if (req !== dimsReq || !file || file.hid !== entry.hid || singleCard.hidden) return;
+        singleMeta.textContent = paint(m);
       });
     }
     return;
@@ -934,7 +1103,7 @@ function renderRows() {
     li.append(thumbOrBadge(entry.url, entry.name));
     const nm = document.createElement("span");
     nm.className = "fn";
-    nm.textContent = entry.name;
+    nm.textContent = shortName(entry.name);
     nm.title = entry.name;
     const meta = document.createElement("span");
     meta.className = "fs";
@@ -971,8 +1140,11 @@ function renderRows() {
       targetsFor(entry.family).forEach((opt) => {
         const unsupportedAudio = entry.family === "audio" && !opt.soon && !supportsAudioTarget(opt.v);
         const unsupportedDoc = entry.family === "document" && !opt.soon && !supportsDocTarget(opt.v);
-        const disabled = opt.soon || unsupportedAudio || unsupportedDoc;
-        const reason = opt.soon ? (opt.label || "soon").toUpperCase() : disabled ? "NO SUPPORT" : "";
+        const unsupportedVideo = entry.family === "video" && !opt.soon && !supportsVideoTarget(opt.v);
+        const inputOnlyVideo =
+          unsupportedVideo && ["MOV", "MKV", "AVI"].includes(opt.v);
+        const disabled = opt.soon || unsupportedAudio || unsupportedDoc || unsupportedVideo;
+        const reason = opt.soon ? (opt.label || "soon").toUpperCase() : inputOnlyVideo ? "INPUT ONLY" : disabled ? "NO SUPPORT" : "";
         const item = document.createElement("li");
         item.className = "pick-opt" + (disabled ? " dis" : "") + (opt.v === entry.target ? " sel" : "");
         item.setAttribute("role", "option");
@@ -1058,12 +1230,13 @@ function renderRows() {
 
 function renderActiveMeta() {
   srcExt = srcExtOf(file.name);
-  src.textContent = file.name;
+  src.textContent = shortName(file.name);
+  src.title = file.name;
   sz.textContent = fmtSize(file.size);
   origLabel.textContent = srcExt + " · Original";
   origSize.textContent = fmtSize(file.size);
-  toChoose.innerHTML = files.length > 1 ? `Continue with ${file.name} &rarr;` : "Continue &rarr;";
-  toChoose.title = files.length > 1 ? file.name : "";
+  toChoose.innerHTML = "Continue &rarr;";
+  toChoose.title = "";
   const multi = files.length > 1;
   const h1 = multi ? "Convert your files" : "Convert your " + srcExt;
   document.title = multi ? "Chameleon — Convert files" : "Chameleon — Convert a " + srcExt;
@@ -1088,7 +1261,7 @@ function renderGrid() {
 
     const thumb = document.createElement("div");
     thumb.className = "thumb";
-    if (entry.family === "audio") {
+    if (entry.family === "audio" || entry.family === "video") {
       thumb.textContent = srcExtOf(entry.name);
       thumb.setAttribute("aria-hidden", "true");
     } else if (entry.url) {
@@ -1110,7 +1283,7 @@ function renderGrid() {
     const meta = document.createElement("div");
     meta.className = "meta";
     const name = document.createElement("b");
-    name.textContent = entry.name;
+    name.textContent = shortName(entry.name);
     name.title = entry.name;
     const sub = document.createElement("span");
     sub.textContent = `${fmtSize(entry.size)} → ${entry.target}`;
@@ -1186,6 +1359,8 @@ function removeAt(i) {
     dimsPending.delete(rm.hid);
     durCache.delete(rm.hid);
     durPending.delete(rm.hid);
+    vidCache.delete(rm.hid);
+    vidPending.delete(rm.hid);
   }
   if (rm && rm.url) {
     try {
@@ -1205,12 +1380,14 @@ function removeAt(i) {
 }
 
 function describeRejection(picked) {
-  const kind = stubKind(picked);
   const seenType = String((picked && picked.type) || "") || "unknown type";
   const seenExt = extOf(picked && picked.name) || "no extension";
-  if (kind === "video")
-    return `${picked.name}: noted — video conversion is coming soon, listed for now. (saw ${seenType} / ${seenExt})`;
-  return `${picked.name}: unsupported file (saw ${seenType} / ${seenExt}) — images (PNG / JPG / SVG / WEBP / HEIC), audio (MP3 / WAV / OGG / AAC / M4A) or documents (TXT / MD / RTF / PDF / DOCX / EPUB) only.`;
+  if (picked && picked.size > limitFor(picked))
+    return `${picked.name}: over ${limitLabelFor(picked)} — pick a smaller file.`;
+  const fam = familyOf(picked);
+  if (fam === "image" && !isSupported(picked))
+    return `${picked.name}: that image type isn't supported yet — PNG / JPG / SVG / WEBP / HEIC only. (saw ${seenType} / ${seenExt})`;
+  return `${picked.name}: unsupported file (saw ${seenType} / ${seenExt}) — images (PNG / JPG / SVG / WEBP / HEIC), audio (MP3 / WAV / OGG / AAC / M4A), video (MP4 / WEBM / MOV / MKV / AVI) or documents (TXT / MD / RTF / PDF / DOCX / EPUB) only.`;
 }
 
 function entryDefault(family) {
@@ -1236,6 +1413,15 @@ function entryDefault(family) {
     }
     return t;
   }
+  if (family === "video") {
+    if (!VIDEO_CONVERTIBLE_TARGETS.includes(t)) t = "MP4";
+    // Prefer MP4, fall back to WEBM (never a dead default).
+    if (!supportsVideoTarget(t)) {
+      if (supportsVideoTarget("MP4")) t = "MP4";
+      else if (supportsVideoTarget("WEBM")) t = "WEBM";
+    }
+    return t;
+  }
   if (t === "WEBP" && !supportsWebp()) t = "JPG";
   return t;
 }
@@ -1250,7 +1436,7 @@ function addFiles(list) {
       rejected.push(`${picked.name}: queue is full (max ${MAX_FILES}).`);
       continue;
     }
-    if (!isKnown(picked)) {
+    if (!isSupported(picked) || picked.size > limitFor(picked)) {
       const reason = describeRejection(picked);
       try {
         console.debug("[chameleon] rejected", { name: picked.name, type: picked.type, size: picked.size, reason });
@@ -1359,6 +1545,7 @@ modeAll.addEventListener("click", () => {
     if (f.family === "image" && REAL_TARGETS.includes(target)) f.target = target;
     else if (f.family === "audio" && REAL_AUDIO_TARGETS.includes(target)) f.target = target;
     else if (f.family === "document" && REAL_DOC_TARGETS.includes(target)) f.target = target;
+    else if (f.family === "video" && REAL_VIDEO_TARGETS.includes(target)) f.target = target;
     else if (f.family === fam) f.target = entryDefault(f.family);
   });
   clearResults();
@@ -1408,6 +1595,7 @@ q.addEventListener("change", () => {
   if (!file || busy) return;
   // Commit row + preview-card badges once per gesture (release / keypress).
   if (isAudioEntry(file)) renderRows();
+  if (isVideoEntry(file)) renderSingleCard();
 });
 
 if (changeBtn) changeBtn.addEventListener("click", () => changeInput.click());
@@ -1486,6 +1674,31 @@ btn.addEventListener("click", async () => {
           await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 30)));
           blob = await encodeDoc(decoded.model, entry.target, quality);
           outNameFinal = outNameDoc(entry.name, entry.target);
+        } else if (isVideoEntry(entry)) {
+          if (["MOV", "MKV", "AVI"].includes(entry.target)) {
+            // Optional vendored encoder: loads on demand, never preloaded.
+            setProgress(base + span * 0.12, `Loading optional encoder for ${entry.target}…${tag}`);
+            try {
+              await ensureFfmpeg();
+            } catch {
+              // encodeVideo() surfaces the honest code below
+            }
+          }
+          const decoded = await decodeVideo(entry.blob);
+          setProgress(base + span * 0.35, `Encoding ${entry.name}…${tag}`);
+          await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 30)));
+          try {
+            blob = await encodeVideo(decoded, entry.target, quality, (p) => {
+              try {
+                setProgress(base + span * (0.35 + 0.55 * (p || 0)), `Encoding ${entry.name}…${tag}`);
+              } catch {
+                // progress is best-effort
+              }
+            });
+          } finally {
+            closeVideo(decoded);
+          }
+          outNameFinal = outNameVideo(entry.name, entry.target);
         } else if (isAudioEntry(entry)) {
           if (entry.target === "MP3") {
             try {
@@ -1498,12 +1711,7 @@ btn.addEventListener("click", async () => {
           setProgress(base + span * 0.35, `Encoding ${entry.name}…${tag}`);
           await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 30)));
           blob = await encodeAudio(decoded, entry.target, quality);
-          // AudioBuffers are GC'd; close piste not needed. Release decode refs.
-          try {
-            decoded.getChannelData(0);
-          } catch {
-            // ignore
-          }
+          // AudioBuffers are GC'd once decodeAudio's context is closed — nothing to release here.
           outNameFinal = outNameAudio(entry.name, entry.target);
         } else {
           const decoded = await decodeImage(entry.blob, entry.name);
@@ -1534,13 +1742,27 @@ btn.addEventListener("click", async () => {
         setProgress(base + span, `Finished ${entry.name}${tag}`);
       } catch (err) {
         const code = err && err.message ? err.message : "decode-failed";
-        let reason = "couldn't be read in this browser";
+        let reason;
+        if (code === "unsupported-target") reason = `${entry.target} isn't a supported output here — pick another format`;
+        else if (code === "no-toblob") reason = "canvas export isn't available in this browser — try another browser";
+        else if (code === "no-2d-context") reason = "canvas 2D isn't available in this browser — try another browser";
+        else if (code === "encode-failed") reason = `${entry.target} encoding failed — try again or pick another format`;
+        else if (code === "ffmpeg-api-unknown") reason = "optional video encoder has an unknown API — try MP4 or WEBM";
+        else if (code === "xml-corrupt") reason = "couldn't be read — the file's XML looks damaged";
+        else if (code === "zip-unsupported-method") reason = `${entry.target} uses a ZIP method this browser can't write — try TXT or PDF`;
+        else reason = "couldn't be read in this browser";
         if (code === "heic-unsupported")
           reason = "HEIC isn't decodable in this browser — try Safari or export to JPG first";
         else if (code === "webp-unsupported")
           reason = "WebP encoding isn't supported in this browser — try JPG";
         else if (code === "heic-output-unsupported") reason = "HEIC output isn't supported — pick another format";
         else if (code === "mp3-unsupported") reason = "MP3 encoding isn't supported in this browser — try WAV";
+        else if (code === "video-unsupported") reason = "couldn't be read as video in this browser — the file may use an unsupported codec";
+        else if (code === "mp4-unsupported") reason = "MP4 encoding isn't supported in this browser — try WEBM";
+        else if (code === "webm-unsupported") reason = "WEBM encoding isn't supported in this browser — try MP4";
+        else if (code === "mov-unsupported") reason = "MOV needs the optional local encoder, which isn't loaded — try MP4 or WEBM";
+        else if (code === "mkv-unsupported") reason = "MKV needs the optional local encoder, which isn't loaded — try MP4 or WEBM";
+        else if (code === "avi-unsupported") reason = "AVI needs the optional local encoder, which isn't loaded — try MP4 or WEBM";
         else if (code === "ogg-unsupported") reason = "OGG encoding isn't supported in this browser — try WAV or MP3";
         else if (code === "aac-unsupported") reason = "AAC encoding isn't supported in this browser — try WAV or MP3";
         else if (code === "m4a-unsupported") reason = "M4A encoding isn't supported in this browser — try WAV or MP3";
@@ -1556,7 +1778,12 @@ btn.addEventListener("click", async () => {
         else if (code === "docx-no-text" || code === "epub-no-text")
           reason = "no convertible text found in the file";
         else if (code === "encode-unsupported" || code === "encode-timeout")
-          reason = `${entry.target} encoding isn't supported in this browser — try WAV`;
+          reason =
+            code === "encode-timeout" && isVideoEntry(entry)
+              ? "timed out while recording — try a shorter clip or a lower quality rung"
+              : isVideoEntry(entry)
+                ? `${entry.target} encoding isn't supported in this browser — try ${supportsVideoTarget("MP4") ? "MP4" : "WEBM"}`
+                : `${entry.target} encoding isn't supported in this browser — try WAV`;
         else if (code === "webaudio-unsupported") reason = "audio decoding isn't supported in this browser";
         try {
           console.debug("[chameleon] convert failed", { name: entry.name, target: entry.target, code, reason });
@@ -1644,8 +1871,19 @@ async function loadStaged() {
       // storage hygiene is best-effort
     }
   }
-  const usable = rows.filter((r) => r && r.blob && isKnown({ name: r.name, type: r.type }));
+  const usable = rows.filter((r) => {
+    if (!r || !r.blob || !isSupported({ name: r.name, type: r.type })) return false;
+    const probe = { name: r.name, type: r.type };
+    return (r.size || 0) <= limitFor(probe);
+  });
   extraCount = Math.max(0, rows.length - Math.min(usable.length, MAX_FILES));
+  if (extraCount > 0) {
+    try {
+      console.debug("[chameleon] staged truncated", { total: rows.length, usable: usable.length, extraCount });
+    } catch {
+      // ignore
+    }
+  }
   usable.slice(0, MAX_FILES).forEach((r) => {
     const family = familyOf({ name: r.name, type: r.type });
     files.push({
@@ -1663,7 +1901,7 @@ async function loadStaged() {
     // Keep staged targets when they belong to the other family; renderTiles
     // validates per-family below.
     const up = String(target || "").toUpperCase();
-    if (![...REAL_TARGETS, ...REAL_AUDIO_TARGETS, ...REAL_DOC_TARGETS, "HEIC"].includes(up)) target = "WEBP";
+    if (![...REAL_TARGETS, ...REAL_AUDIO_TARGETS, ...REAL_DOC_TARGETS, ...REAL_VIDEO_TARGETS, "HEIC"].includes(up)) target = "WEBP";
   }
 }
 
@@ -1687,10 +1925,18 @@ files.forEach((f) => {
   if (f.family === "document" && !supportsDocTarget(f.target)) {
     f.target = supportsDocTarget("PDF") ? "PDF" : "TXT";
   }
+  if (f.family === "video" && !supportsVideoTarget(f.target)) {
+    if (supportsVideoTarget("MP4")) f.target = "MP4";
+    else if (supportsVideoTarget("WEBM")) f.target = "WEBM";
+    else f.target = "MP4";
+  }
 });
 if (target && !supportsDocTarget(target) && REAL_DOC_TARGETS.includes(target)) target = "PDF";
+if (target && !supportsVideoTarget(target) && REAL_VIDEO_TARGETS.includes(target)) {
+  target = supportsVideoTarget("MP4") ? "MP4" : supportsVideoTarget("WEBM") ? "WEBM" : target;
+}
 if (target && files.length === 0) {
-  if (![...REAL_TARGETS, ...REAL_AUDIO_TARGETS, ...REAL_DOC_TARGETS].includes(target)) target = "WEBP";
+  if (![...REAL_TARGETS, ...REAL_AUDIO_TARGETS, ...REAL_DOC_TARGETS, ...REAL_VIDEO_TARGETS].includes(target)) target = "WEBP";
 }
 setFormatTheme(target);
 if (files.length) {
@@ -1705,7 +1951,7 @@ if (files.length) {
   if (mixed) mode = "manual";
   syncMode();
   setFormatTheme(activeTarget());
-  setStatus("");
+  setStatus(extraCount > 0 ? `Staged ${files.length} files — ${extraCount} skipped (limit ${MAX_FILES}).` : "");
 } else {
   renderEmpty();
 }

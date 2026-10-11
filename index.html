@@ -4,13 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Chameleon</title>
-  <link rel="stylesheet" href="css/style.css?v=11" />
+   <link rel="stylesheet" href="css/style.css?v=15" />
 </head>
 <body>
   <div class="pg" data-theme="orange">
     <header class="nav">
       <div class="wrap in" style="border:0">
-        <a class="brand" href="#">
+        <a class="brand" href="index.html">
           <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true"><rect width="34" height="34" rx="9" style="fill:var(--o)"></rect><path d="M9 21c0-6 5-9 9-7s4 8-1 8-5-5-1-5" fill="none" stroke="#161616" stroke-width="2.6" stroke-linecap="round"></path><circle cx="24" cy="12" r="2" fill="#161616"></circle></svg>
           Chameleon
         </a>
@@ -19,7 +19,7 @@
           <a class="nl" href="convert.html" scramble-link><span class="dekor dekor-tr" aria-hidden="true"></span><span class="dekor dekor-bl" aria-hidden="true"></span><span scramble-text data-text="Convert">Convert</span></a>
           <a class="nl" href="faq.html" scramble-link><span class="dekor dekor-tr" aria-hidden="true"></span><span class="dekor dekor-bl" aria-hidden="true"></span><span scramble-text data-text="FAQ">FAQ</span></a>
         </nav>
-        <a class="btn" href="convert.html">Convert now</a>
+        <a class="btn" href="convert.html">Convert<span class="btn-now"> now</span></a>
       </div>
     </header>
     <main>
@@ -30,12 +30,12 @@
           <p class="sub">Drop in a file, pick a format, and Chameleon turns it into whatever you need. Images, audio, video and documents.</p>
           <div class="panel">
             <div class="ph"><span class="cap">Step 01 — Drop a file</span><span class="cap" id="status" role="status" aria-live="polite">No files selected yet.</span></div>
-            <div class="drop" id="drop" tabindex="0" role="button" aria-label="Drop image, audio or document files here or press Enter to browse">
+              <div class="drop" id="drop" tabindex="0" role="button" aria-label="Drop image, audio, video or document files here or press Enter to browse">
               <svg width="44" height="44" viewBox="0 0 44 44" fill="none" stroke="#161616" stroke-width="2.4" stroke-linecap="square" aria-hidden="true"><path d="M22 30V8M13 17l9-9 9 9M7 30v6h30v-6"></path></svg>
               <strong>Drag &amp; Drop your file here</strong>
               <span class="cap">or</span>
               <button class="btn dk" type="button" id="browse-btn">Choose file</button>
-              <input class="vh" id="file-input" type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp,image/heic,image/heif,audio/mpeg,audio/wav,audio/aac,audio/ogg,audio/mp4,audio/webm,text/plain,text/markdown,text/x-markdown,application/rtf,text/rtf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/epub+zip,.png,.jpg,.jpeg,.svg,.webp,.heic,.heif,.mp3,.wav,.aac,.ogg,.oga,.opus,.m4a,.weba,.3gp,.txt,.md,.markdown,.rtf,.pdf,.docx,.epub" multiple />
+               <input class="vh" id="file-input" type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp,image/heic,image/heif,audio/mpeg,audio/wav,audio/aac,audio/ogg,audio/mp4,audio/webm,video/mp4,video/quicktime,video/webm,video/x-matroska,video/x-msvideo,text/plain,text/markdown,text/x-markdown,application/rtf,text/rtf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/epub+zip,.png,.jpg,.jpeg,.svg,.webp,.heic,.heif,.mp3,.wav,.aac,.ogg,.oga,.opus,.m4a,.weba,.3gp,.mp4,.mov,.webm,.mkv,.avi,.txt,.md,.markdown,.rtf,.pdf,.docx,.epub" multiple />
               <span class="cap" id="file-info">No files selected yet.</span>
             </div>
             <ul class="queue" id="queue" hidden></ul>
@@ -50,7 +50,7 @@
               <button class="btn" type="button" id="convert-btn" disabled>Convert →</button>
             </div>
           </div>
-          <div class="cap" style="margin-top:24px">No sign-up · No install</div>
+          <div class="cap" style="margin-top:24px">No sign-up · No install · Up to 20 files · Video 1 GB desktop / 200 MB phone · Others 50 MB</div>
           <i class="sq" style="bottom:28px;left:28px"></i><i class="sq" style="bottom:28px;right:28px"></i>
         </section>
       </div>
@@ -61,7 +61,7 @@
         <div class="grid">
           <article class="cell"><div class="num">01</div><h3>Images</h3><p>Resize-safe conversions that keep transparency and colour intact.</p><div class="tags tags-top"><span class="tag">PNG</span><span class="tag">JPG</span><span class="tag">SVG</span></div><div class="tags"><span class="tag">WEBP</span><span class="tag">HEIC</span></div></article>
           <article class="cell"><div class="num">02</div><h3>Audio</h3><p>Lossless to compressed and back, with clean metadata handling.</p><div class="tags tags-top"><span class="tag">MP3</span><span class="tag">WAV</span><span class="tag">AAC</span></div><div class="tags"><span class="tag">OGG</span><span class="tag">M4A</span></div></article>
-          <article class="cell"><div class="num">03</div><h3>Video</h3><p>Change containers or extract a clip without a timeline editor.</p><div class="tags tags-top"><span class="tag">MP4</span><span class="tag">MOV</span><span class="tag">MKV</span></div><div class="tags"><span class="tag">AVI</span><span class="tag">GIF</span><span class="tag">WEBM</span></div></article>
+          <article class="cell"><div class="num">03</div><h3>Video</h3><p>Change containers or extract a clip without a timeline editor.</p><div class="tags tags-top"><span class="tag">MP4</span><span class="tag">MOV</span><span class="tag">MKV</span></div><div class="tags"><span class="tag">AVI</span><span class="tag">WEBM</span></div></article>
           <article class="cell"><div class="num">04</div><h3>Documents</h3><p>Move between office, ebook and plain-text formats with layout kept.</p><div class="tags tags-top"><span class="tag">MD</span><span class="tag">PDF</span><span class="tag">TXT</span></div><div class="tags"><span class="tag">RTF</span><span class="tag">DOCX</span><span class="tag">EPUB</span></div></article>
         </div>
       </section>
@@ -85,22 +85,20 @@
       <div class="wrap">
         <div class="fgrid">
           <div>
-            <a class="brand" href="#" style="color:#f6f6f6">
+            <a class="brand" href="index.html">
               <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true"><rect width="34" height="34" rx="9" style="fill:var(--o)"></rect><path d="M9 21c0-6 5-9 9-7s4 8-1 8-5-5-1-5" fill="none" stroke="#161616" stroke-width="2.6" stroke-linecap="round"></path><circle cx="24" cy="12" r="2" fill="#161616"></circle></svg>
               Chameleon
             </a>
-            <p style="max-width:300px;margin:16px 0 0;font-size:14px;color:#bdbdbd">A calm, fast file converter that adapts to whatever you drop in.</p>
+            <p class="ftag">A calm, fast file converter that adapts to whatever you drop in.</p>
           </div>
-          <div><div class="fh">Product</div><a class="fl" href="#formats">Formats</a><a class="fl" href="#how">How it works</a><a class="fl" href="faq.html">FAQ</a></div>
-          <div><div class="fh">Company</div><a class="fl" href="#">About</a><a class="fl" href="#">Blog</a><a class="fl" href="#">Contact</a></div>
-          <div><div class="fh">Legal</div><a class="fl" href="#">Privacy</a><a class="fl" href="#">Terms</a></div>
+          <div><div class="fh">Product</div><a class="fl" href="index.html#formats">Formats</a><a class="fl" href="index.html#how">How it works</a><a class="fl" href="faq.html">FAQ</a></div>
         </div>
-        <div class="mark disp" scramble-link scramble-text data-text="Chameleon" data-glyphs="upper" title="Hover to scramble">Chameleon</div>
-        <div class="copy"><span>© 2026 CHAMELEON. ALL RIGHTS RESERVED.</span><span>MADE FOR EVERY FORMAT</span></div>
+        <button class="mark disp" type="button" scramble-link scramble-text data-text="Chameleon" data-glyphs="upper" title="Tap to scramble" aria-label="Chameleon — activate to scramble">Chameleon</button>
+        <div class="copy"><span>© 2026 Chameleon. All rights reserved.</span></div>
       </div>
     </footer>
   </div>
 
-  <script type="module" src="./js/home.js?v=4"></script>
+  <script type="module" src="./js/home.js?v=6"></script>
 </body>
 </html>

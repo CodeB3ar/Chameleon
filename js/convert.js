@@ -2,11 +2,14 @@
    Images convert locally via canvas. Audio converts locally via Web Audio
    decode + WAV PCM / MediaRecorder / vendored MP3 encode. Documents convert
    locally via js/encode-doc.js (text transforms + hand-rolled PDF writer +
-   vendored PDF text extraction). Video stubs only. */
+   vendored PDF text extraction). Video converts locally via
+   js/encode-video.js (<video> decode + canvas/MediaRecorder re-encode for
+   MP4/WEBM, optional vendored ffmpeg remux for MOV/MKV/AVI). */
 
 export const IMAGE_TARGETS = ["png", "jpg", "svg", "webp"];
 export const AUDIO_TARGETS = ["mp3", "wav", "ogg", "aac", "m4a"];
 export const DOC_TARGETS = ["txt", "md", "rtf", "pdf", "docx", "epub"];
+export const VIDEO_TARGETS = ["mp4", "mov", "webm", "mkv", "avi"];
 
 const IMAGE_TYPES = [
   "image/png",
@@ -49,11 +52,20 @@ const DOC_TYPES = [
   "application/epub+zip",
 ];
 const DOC_EXTS = [".txt", ".md", ".markdown", ".rtf", ".pdf", ".docx", ".epub"];
+const VIDEO_TYPES = [
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
+  "video/x-matroska",
+  "video/x-msvideo",
+  "video/avi",
+  "video/mpeg",
+];
+const VIDEO_EXTS = [".mp4", ".mov", ".webm", ".mkv", ".avi"];
 
 // Extensions we can explicitly name as "coming soon" instead of "unsupported".
 // NOTE: GIF is intentionally not listed anywhere — it is unsupported.
 const STUB_EXTS = [
-  ".mp4", ".mov", ".webm", ".mkv", ".avi",
   ".bmp", ".tiff", ".tif",
 ];
 
@@ -69,11 +81,13 @@ export function isSupported(file) {
   if (IMAGE_TYPES.includes(t)) return true;
   if (AUDIO_TYPES.includes(t)) return true;
   if (DOC_TYPES.includes(t)) return true;
+  if (VIDEO_TYPES.includes(t)) return true;
   const name = String(file.name || "").toLowerCase();
   return (
     IMAGE_EXTS.some((ext) => name.endsWith(ext)) ||
     AUDIO_EXTS.some((ext) => name.endsWith(ext)) ||
-    DOC_EXTS.some((ext) => name.endsWith(ext))
+    DOC_EXTS.some((ext) => name.endsWith(ext)) ||
+    VIDEO_EXTS.some((ext) => name.endsWith(ext))
   );
 }
 
@@ -82,7 +96,6 @@ export function stubKind(file) {
   const ext = extOf(file && file.name);
   if (!ext) return "";
   if (!STUB_EXTS.includes(ext)) return "";
-  if ([".mp4", ".mov", ".webm", ".mkv", ".avi"].includes(ext)) return "video";
   return "image";
 }
 
@@ -100,7 +113,8 @@ export function familyOf(file) {
     return "audio";
   if (DOC_TYPES.includes(t) || DOC_EXTS.some((e) => String(file.name || "").toLowerCase().endsWith(e)))
     return "document";
-  if (isSupported(file)) return "image";
+  if (VIDEO_TYPES.includes(t) || VIDEO_EXTS.some((e) => String(file.name || "").toLowerCase().endsWith(e)))
+    return "video";
   const kind = stubKind(file);
   if (kind) return kind;
   if (t.startsWith("image/")) return "image";
@@ -124,6 +138,10 @@ export const AUDIO_CONVERTIBLE_TARGETS = ["MP3", "WAV", "OGG", "AAC", "M4A"];
 // DOCX/EPUB need ZIP capability; PDF *input* needs vendored pdf.js).
 // Gating lives in supportsDocTarget(), mirroring supportsAudioTarget().
 export const DOC_CONVERTIBLE_TARGETS = ["TXT", "MD", "RTF", "PDF", "DOCX", "EPUB"];
+// Video targets encodable via encode-video.js (MP4/WEBM native; MOV/MKV/AVI
+// via the optional vendored ffmpeg remux). Gating lives in
+// supportsVideoTarget(), mirroring supportsAudioTarget().
+export const VIDEO_CONVERTIBLE_TARGETS = ["MP4", "WEBM", "MOV", "MKV", "AVI"];
 
 /**
  * Per-family target options for custom mode.
@@ -133,7 +151,8 @@ export const DOC_CONVERTIBLE_TARGETS = ["TXT", "MD", "RTF", "PDF", "DOCX", "EPUB
 export function targetsFor(family) {
   if (family === "audio")
     return ["MP3", "WAV", "OGG", "AAC", "M4A"].map((v) => ({ v, soon: false }));
-  if (family === "video") return ["MP4", "MOV", "WEBM"].map((v) => ({ v, soon: true, label: "soon" }));
+  if (family === "video")
+    return ["MP4", "WEBM", "MOV", "MKV", "AVI"].map((v) => ({ v, soon: false }));
   if (family === "document")
     return ["TXT", "MD", "RTF", "PDF", "DOCX", "EPUB"].map((v) => ({ v, soon: false }));
   return [
@@ -153,7 +172,9 @@ export function defaultTargetFor(family, globalTarget) {
   if (family === "audio") {
     return AUDIO_CONVERTIBLE_TARGETS.includes(globalTarget) ? globalTarget : "MP3";
   }
-  if (family === "video") return "MP4";
+  if (family === "video") {
+    return VIDEO_CONVERTIBLE_TARGETS.includes(globalTarget) ? globalTarget : "MP4";
+  }
   if (family === "document") return "PDF";
   return globalTarget;
 }
@@ -162,5 +183,65 @@ export function fmtSize(n) {
   n = Number(n) || 0;
   if (n < 1024) return n + " B";
   if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
-  return (n / (1024 * 1024)).toFixed(1) + " MB";
+  if (n < 1024 * 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + " MB";
+  return (n / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+}
+
+// Queue + size lids: 20 files max; video gets 1GB desktop / 200MB
+// mobile, everything else stays 50MB. Centralised here so home and
+// convert pages can never drift apart again.
+export const MAX_FILES = 20;
+export const MAX_BYTES_DEFAULT = 50 * 1024 * 1024;
+export const MAX_BYTES_VIDEO_DESKTOP = 1024 * 1024 * 1024;
+export const MAX_BYTES_VIDEO_MOBILE = 200 * 1024 * 1024;
+
+/** True on phones / low-memory devices where the 200MB video lid applies. */
+export function isMobileCap() {
+  try {
+    if (window.matchMedia && window.matchMedia("(max-width: 560px)").matches) return true;
+  } catch {
+    // ignore
+  }
+  try {
+    const mem = navigator.deviceMemory;
+    if (typeof mem === "number" && mem <= 4) return true;
+  } catch {
+    // ignore
+  }
+  try {
+    const ua = String(navigator.userAgent || "");
+    if (/Android|iPhone|iPad|iPod|Mobile/i.test(ua)) return true;
+  } catch {
+    // ignore
+  }
+  return false;
+}
+
+/** Per-file byte limit: video scales by device, everything else is 50MB. */
+export function limitFor(fileOrFamily) {
+  const fam =
+    typeof fileOrFamily === "string" ? fileOrFamily : familyOf(fileOrFamily) || "";
+  if (fam === "video") return isMobileCap() ? MAX_BYTES_VIDEO_MOBILE : MAX_BYTES_VIDEO_DESKTOP;
+  return MAX_BYTES_DEFAULT;
+}
+
+/** Human lid label for rejection messages, e.g. "1 GB" / "200 MB" / "50 MB". */
+export function limitLabelFor(fileOrFamily) {
+  return fmtSize(limitFor(fileOrFamily));
+}
+
+/**
+ * Shorten a filename for display: names longer than `max` chars render as
+ * stem + "…" + extension (e.g. "my-vacation-photos-f….mp4"), so the file
+ * type stays visible. Short names return unchanged. The full name always
+ * stays in the element's `title` tooltip — callers set that separately.
+ */
+export function shortName(name, max) {
+  const s = String(name || "");
+  const m = Math.max(8, Number(max) || 24);
+  if (s.length <= m) return s;
+  const i = s.lastIndexOf(".");
+  const ext = i > 0 ? s.slice(i) : "";
+  const keep = Math.max(1, m - ext.length - 1);
+  return s.slice(0, keep) + "…" + ext;
 }

@@ -25,9 +25,12 @@ function store(list) {
 
 export function pushHistory(entry) {
   const list = loadHistory();
-  list.unshift({ state: "queued", ...entry, ts: Date.now() });
-  store(list);
-  return list;
+  const deduped = list.filter(
+    (e) => !(e && e.name === entry.name && e.size === entry.size)
+  );
+  deduped.unshift({ state: "queued", ...entry, ts: Date.now() });
+  store(deduped);
+  return deduped;
 }
 
 export function clearHistory() {

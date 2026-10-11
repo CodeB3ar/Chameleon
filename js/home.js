@@ -1,17 +1,15 @@
 /* Chameleon — home page wiring (v1: collect + hand off).
-   Validates image files, maintains a multi-file queue, lets the user pick
-   PNG/JPG/WEBP, then stages blobs in IndexedDB and navigates to
+   Validates image/audio/video/document files, maintains a multi-file
+   queue, lets the user pick a Convert-to format, then stages blobs in
+   IndexedDB and navigates to
    convert.html?staged=1&target=<fmt>. The target row shows "Works with"
    family tags until files arrive, then swaps to format chips; reaching 2+
    files stages and navigates automatically. Everything stays local. */
 
 import { initScramble } from "./scramble.js";
-import { isSupported, stubKind, fmtSize, IMAGE_TARGETS, AUDIO_TARGETS, DOC_TARGETS, familyOf } from "./convert.js?v=2";
+import { isSupported, stubKind, fmtSize, shortName, IMAGE_TARGETS, AUDIO_TARGETS, DOC_TARGETS, VIDEO_TARGETS, familyOf, MAX_FILES, limitFor, limitLabelFor } from "./convert.js?v=4";
 import { pushHistory } from "./history.js";
 import { putStaged } from "./store.js";
-
-const MAX_BYTES = 50 * 1024 * 1024;
-const MAX_FILES = 20;
 
 const drop = document.getElementById("drop");
 const fileInput = document.getElementById("file-input");
@@ -29,6 +27,7 @@ const FAMILIES = ["images", "audio", "documents", "video"];
 // tiles — the convert page keeps using the full DOC_TARGETS/AUDIO_TARGETS.
 const HOME_DOC_TARGETS = ["txt", "md", "pdf", "docx"];
 const HOME_AUDIO_TARGETS = ["mp3", "wav", "aac", "m4a"];
+const HOME_VIDEO_TARGETS = ["mp4", "webm", "mov"];
 
 function cap1(s) {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -45,7 +44,8 @@ function setStatus(msg) {
 
 function queueFamily() {
   if (!queue.length) return "";
-  return familyOf(queue[0].file) || "image";
+  const first = familyOf(queue[0].file) || "image";
+  return queue.every((q) => (familyOf(q.file) || "image") === first) ? first : "mixed";
 }
 
 function renderTargets() {
@@ -71,7 +71,19 @@ function renderTargets() {
   chipsEl.setAttribute("aria-label", "Convert to");
   chipsEl.append(label);
   const fam = queueFamily();
-  const list = fam === "audio" ? HOME_AUDIO_TARGETS : fam === "document" ? HOME_DOC_TARGETS : IMAGE_TARGETS;
+  if (fam === "mixed") {
+    const note = document.createElement("span");
+    note.className = "cap";
+    note.textContent = "Mixed files — set formats on the Convert page";
+    chipsEl.append(note);
+    const more = document.createElement("a");
+    more.className = "chip";
+    more.href = "convert.html";
+    more.innerHTML = "More &rarr;";
+    chipsEl.append(more);
+    return;
+  }
+  const list = fam === "audio" ? HOME_AUDIO_TARGETS : fam === "document" ? HOME_DOC_TARGETS : fam === "video" ? HOME_VIDEO_TARGETS : IMAGE_TARGETS;
   for (const f of list) {
     const on = f === target;
     const b = document.createElement("button");
@@ -100,7 +112,10 @@ function thumbUrl(file) {
   const isImg =
     t.startsWith("image/") ||
     [".png", ".jpg", ".jpeg", ".svg", ".webp", ".heic", ".heif"].some((e) => n.endsWith(e));
-  if (!isImg) return null;
+  const isVideo =
+    t.startsWith("video/") ||
+    [".mp4", ".mov", ".webm", ".mkv", ".avi"].some((e) => n.endsWith(e));
+  if (!isImg && !isVideo) return null;
   try {
     return URL.createObjectURL(file);
   } catch {
@@ -109,21 +124,21 @@ function thumbUrl(file) {
 }
 
 function describeRejection(file) {
-  if (file.size > MAX_BYTES) return `${file.name}: over 50 MB — pick a smaller file.`;
+  if (file.size > limitFor(file)) return `${file.name}: over ${limitLabelFor(file)} — pick a smaller file.`;
   const seenType = String(file.type || "") || "unknown type";
   const kind = stubKind(file);
-  if (kind === "video")
-    return `${file.name}: video conversion is coming soon — images, audio and documents for now. (saw ${seenType})`;
   if (kind === "image")
     return `${file.name}: that image type isn't supported yet — PNG / JPG / SVG / WEBP / HEIC only. (saw ${seenType})`;
-  return `${file.name}: unsupported file — images (PNG / JPG / SVG / WEBP / HEIC), audio (MP3 / WAV / OGG / AAC / M4A) or documents (TXT / MD / RTF / PDF / DOCX / EPUB) only. (saw ${seenType})`;
+  return `${file.name}: unsupported file — images (PNG / JPG / SVG / WEBP / HEIC), audio (MP3 / WAV / OGG / AAC / M4A), video (MP4 / WEBM / MOV / MKV / AVI) or documents (TXT / MD / RTF / PDF / DOCX / EPUB) only. (saw ${seenType})`;
 }
 
 function syncTargetToQueue() {
   const fam = queueFamily();
+  if (fam === "mixed" || fam === "") return;
   if (fam === "audio" && !AUDIO_TARGETS.includes(target)) target = "mp3";
   else if (fam === "document" && !DOC_TARGETS.includes(target)) target = "pdf";
-  if ((fam === "image" || fam === "") && !IMAGE_TARGETS.includes(target)) target = "png";
+  else if (fam === "video" && !VIDEO_TARGETS.includes(target)) target = "mp4";
+  if (fam === "image" && !IMAGE_TARGETS.includes(target)) target = "png";
 }
 
 function addFiles(files) {
@@ -137,7 +152,7 @@ function addFiles(files) {
       rejected.push(`${file.name}: queue is full (max ${MAX_FILES}).`);
       continue;
     }
-    if (!isSupported(file) || file.size > MAX_BYTES) {
+    if (!isSupported(file) || file.size > limitFor(file)) {
       const reason = describeRejection(file);
       try {
         console.debug("[chameleon] rejected", { name: file.name, type: file.type, size: file.size, reason });
@@ -156,10 +171,6 @@ function addFiles(files) {
   }
 
   syncTargets();
-  if (added > 0 && queue.length >= 2) {
-    stageAndGo();
-    return;
-  }
   if (added && !rejected.length) setStatus(added === 1 ? "File added — pick a format, then Convert." : `${added} files added — pick a format, then Convert.`);
   else if (added && rejected.length) setStatus(`${added} added. ${rejected[0]}`);
   else if (rejected.length) setStatus(rejected[0]);
@@ -200,15 +211,35 @@ function renderQueue() {
       };
       thumb.appendChild(img);
       thumb.classList.add("has-img");
+    } else if (entry.url && fam === "video") {
+      // Muted inline thumbnail; falls back to an ext badge when the
+      // browser can't preview this container (never autoplayed).
+      const vid = document.createElement("video");
+      vid.muted = true;
+      vid.playsInline = true;
+      vid.preload = "metadata";
+      vid.src = entry.url;
+      vid.setAttribute("aria-hidden", "true");
+      vid.onerror = () => {
+        try {
+          vid.remove();
+        } catch {
+          // ignore
+        }
+        thumb.classList.remove("has-img");
+        thumb.textContent = String(file.name || "").split(".").pop().toUpperCase().slice(0, 4) || "VID";
+      };
+      thumb.appendChild(vid);
+      thumb.classList.add("has-img");
     } else {
-      thumb.textContent = fam === "audio" || fam === "document" ? String(file.name || "").split(".").pop().toUpperCase().slice(0, 4) || "DOC" : "IMG";
+      thumb.textContent = fam === "audio" || fam === "document" || fam === "video" ? String(file.name || "").split(".").pop().toUpperCase().slice(0, 4) || "DOC" : "IMG";
       thumb.setAttribute("aria-hidden", "true");
     }
 
     const meta = document.createElement("div");
     meta.className = "meta";
     const name = document.createElement("b");
-    name.textContent = file.name;
+    name.textContent = shortName(file.name);
     name.title = file.name;
     const sub = document.createElement("span");
     sub.textContent = `${fmtSize(file.size)} → ${target.toUpperCase()}`;
@@ -294,8 +325,7 @@ window.addEventListener("paste", (e) => {
 chipsEl.addEventListener("click", (e) => {
   const fam = e.target.closest("[data-family]");
   if (fam) {
-    if (["images", "audio", "documents"].includes(fam.dataset.family)) openPicker();
-    else setStatus(`${cap1(fam.dataset.family)} conversion is coming soon — images, audio and documents for now.`);
+    openPicker();
     return;
   }
   const btn = e.target.closest(".chip[data-f]");
