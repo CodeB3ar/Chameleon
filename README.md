@@ -34,7 +34,7 @@ HEIC, MOV, MKV, and AVI are input-only. Scanned PDFs are read with OCR, and the 
 There is no build step and there are no dependencies. Serve the folder with any static server, because the fonts won't load over `file://`.
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/CodeB3ar/Chameleon.git
 cd Chameleon
 python3 -m http.server 5500
 ```
