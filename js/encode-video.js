@@ -108,6 +108,16 @@ export function supportsVideoTarget(target) {
   return false;
 }
 
+// NOTE: there is deliberately NO input (decode) probe here. canPlayType()
+// is conservative and can report "" for containers the browser will still
+// play from a real file (byte-sniffing at load), so a probe can wrongly
+// claim NO SUPPORT where decoding actually works. Instead, every container
+// is accepted as input and decodeVideo() attempts the read, surfacing an
+// honest code (video-unsupported / decode-failed) only if that file truly
+// won't decode here — the same INPUT ONLY pattern as HEIC. Dropping the
+// optional ffmpeg build under assets/vendor/ffmpeg/ additionally unlocks
+// MOV/MKV/AVI *output* (and decoding for exotic codecs inside them).
+
 let ffmpegPromise = null;
 
 /**

@@ -7,7 +7,7 @@
    files stages and navigates automatically. Everything stays local. */
 
 import { initScramble } from "./scramble.js";
-import { isSupported, stubKind, fmtSize, IMAGE_TARGETS, AUDIO_TARGETS, DOC_TARGETS, VIDEO_TARGETS, familyOf } from "./convert.js?v=3";
+import { isSupported, stubKind, fmtSize, shortName, IMAGE_TARGETS, AUDIO_TARGETS, DOC_TARGETS, VIDEO_TARGETS, familyOf } from "./convert.js?v=4";
 import { pushHistory } from "./history.js";
 import { putStaged } from "./store.js";
 

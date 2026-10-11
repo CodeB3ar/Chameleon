@@ -20,7 +20,8 @@ import {
   AUDIO_CONVERTIBLE_TARGETS,
   DOC_CONVERTIBLE_TARGETS,
   VIDEO_CONVERTIBLE_TARGETS,
-} from "./convert.js?v=3";
+  shortName,
+} from "./convert.js?v=4";
 import { decodeImage, encodeImage, supportsWebp, getImageDimensions, outName } from "./encode.js";
 import {
   decodeDoc,
@@ -52,7 +53,7 @@ import {
   fmtVideoDuration,
   videoQualityLabel,
   outNameVideo,
-} from "./encode-video.js?v=1";
+} from "./encode-video.js?v=3";
 
 const GRID_FROM = 3; // < GRID_FROM files: long banner; >= GRID_FROM: grid
 const REAL_TARGETS = ["PNG", "JPG", "SVG", "WEBP"];
@@ -503,10 +504,17 @@ function syncTileAvailability() {
       if (!supportsVideoTarget(b.dataset.f)) {
         b.disabled = true;
         const needsVendor = ["MOV", "MKV", "AVI"].includes(b.dataset.f);
-        b.title = needsVendor
-          ? `${b.dataset.f} needs the optional local encoder (vendored ffmpeg, loaded on demand) — MP4 and WEBM work natively.`
-          : `${b.dataset.f} encoding isn't supported in this browser — try ${supportsVideoTarget("MP4") ? "MP4" : "WEBM"}.`;
-        labelTile(b, "NO SUPPORT");
+        if (needsVendor) {
+          // Accepted as input, but this browser can't *produce* the
+          // container without the optional vendor build — same INPUT ONLY
+          // pattern as HEIC. (Input is always attempted; an unreadable
+          // file surfaces an honest error at convert time.)
+          b.title = `${b.dataset.f} is input-only here — drop one in and convert it to ${supportsVideoTarget("MP4") ? "MP4" : "WEBM"}. Producing ${b.dataset.f} files needs the optional local encoder (vendored ffmpeg).`;
+          labelTile(b, "INPUT ONLY");
+        } else {
+          b.title = `${b.dataset.f} encoding isn't supported in this browser — try ${supportsVideoTarget("MP4") ? "MP4" : "WEBM"}.`;
+          labelTile(b, "NO SUPPORT");
+        }
       }
     });
   }
@@ -851,7 +859,7 @@ function renderSingleCard() {
   }
   const entry = file;
   const thumbBox = singleImg.parentElement;
-  singleName.textContent = entry.name;
+  singleName.textContent = shortName(entry.name);
   singleName.title = entry.name;
   const showAudio = entry.family === "audio";
   const showDoc = entry.family === "document";
@@ -1212,8 +1220,10 @@ function renderRows() {
         const unsupportedAudio = entry.family === "audio" && !opt.soon && !supportsAudioTarget(opt.v);
         const unsupportedDoc = entry.family === "document" && !opt.soon && !supportsDocTarget(opt.v);
         const unsupportedVideo = entry.family === "video" && !opt.soon && !supportsVideoTarget(opt.v);
+        const inputOnlyVideo =
+          unsupportedVideo && ["MOV", "MKV", "AVI"].includes(opt.v);
         const disabled = opt.soon || unsupportedAudio || unsupportedDoc || unsupportedVideo;
-        const reason = opt.soon ? (opt.label || "soon").toUpperCase() : disabled ? "NO SUPPORT" : "";
+        const reason = opt.soon ? (opt.label || "soon").toUpperCase() : inputOnlyVideo ? "INPUT ONLY" : disabled ? "NO SUPPORT" : "";
         const item = document.createElement("li");
         item.className = "pick-opt" + (disabled ? " dis" : "") + (opt.v === entry.target ? " sel" : "");
         item.setAttribute("role", "option");
