@@ -1,50 +1,70 @@
 # 🦎 Chameleon
 
-Adapt anything. A file converter homepage in the offline Labs style — full-bleed hairline grid, LabsAmiga display type, directional hover scramble.
+**Adapt anything.** A free file converter that runs entirely in your browser. Nothing is uploaded, ever.
 
-> Shell build: the converter UI is a design shell. File queueing works locally; actual conversion is not wired yet.
+🔗 **Live site: [chameleon-tan.vercel.app](https://chameleon-tan.vercel.app)**
+
+---
+
+## Overview
+
+Drop a file in, pick a format, and download the result. Chameleon converts images, audio, documents, and video on your own device, on desktop or mobile.
+
+## Features
+
+- **100% local.** Your files never leave your device.
+- **Four media types.** Images, audio, documents, and video.
+- **Batch queue.** Convert many files and download them together.
+- **Mobile friendly.** Responsive layouts and touch-sized controls.
+- **No build step.** Plain HTML, CSS, and JavaScript.
+
+## Supported formats
+
+| Type | Input | Output |
+| --- | --- | --- |
+| Images | PNG, JPG, SVG, WEBP, HEIC | PNG, JPG, SVG, WEBP |
+| Audio | MP3, WAV, OGG, AAC, M4A | MP3, WAV, OGG, AAC, M4A |
+| Documents | TXT, MD, RTF, PDF, DOCX, EPUB | TXT, MD, RTF, PDF, DOCX, EPUB |
+| Video | MP4, WEBM, MOV, MKV, AVI | MP4, WEBM |
+
+HEIC, MOV, MKV, and AVI are input-only. Scanned PDFs are read with OCR, and the video quality slider runs from 480p to 4K.
 
 ## Getting started
 
-```
-# serve locally (required — @font-face won't load over file://)
+There is no build step and there are no dependencies. Serve the folder with any static server, because the fonts won't load over `file://`.
+
+```bash
+git clone <your-repo-url>
+cd Chameleon
 python3 -m http.server 5500
-# → http://127.0.0.1:5500/index.html
 ```
 
-No build step, no dependencies — plain HTML, CSS, and JavaScript.
+Then open http://127.0.0.1:5500/index.html.
 
 ## Project structure
 
+```text
+Chameleon/
+├── index.html           Homepage
+├── convert.html         Converter page
+├── faq.html             FAQ
+├── css/style.css        Styles
+├── js/                  Page scripts, converters, and hover effect
+├── assets/              Logo, fonts, and vendored libraries
+└── devlog/              Development log
 ```
-chameleon/
-├── index.html      # homepage (header, hero, converter shell, marquee, ecosystem, footer)
-├── css/style.css   # offline style system (tokens, grid, notch, hover leave-states)
-├── js/home.js      # homepage wiring (dropzone, picker, chips, queue, staging handoff)
-├── js/convert-page.js # convert page (drop, choose, progress, download)
-├── js/scramble.js  # directional hover scramble engine (vanilla, offline-safe)
-├── js/convert.js   # conversion stub (support check only for now)
-├── assets/         # logo + vendored fonts (LabsAmiga, RobotoMono)
-└── preview-style.html  # disposable style showcase (kept for reference)
-```
-
-## Style notes
-
-- Display: LabsAmiga 21vh / 89% marquee, vendored in `assets/fonts/`
-- Body: RobotoMono, vendored locally, Google Fonts fallback only
-- Notch: 10px clip-path (matches live site), orange `#ff7120`
-- Hover scramble: left→right on enter (800ms), right→left on leave (~533ms), per-letter fixed-width spans so spacing never shifts
-- Title uses uppercase glyph pool; everything else lowercase
 
 ## Roadmap
 
-- [x] Homepage shell in offline style
-- [x] Real image conversion (PNG / JPG / SVG / WEBP in, HEIC input-only, canvas-based, 100% local)
-- [x] Real audio conversion (MP3 / WAV / OGG / AAC / M4A, Web Audio decode, hand-rolled WAV, vendored LAME MP3, 100% local)
-- [x] Real document conversion (TXT / MD / RTF / PDF / DOCX / EPUB, hand-rolled text transforms + PDF writer + ZIP, vendored pdf.js text extraction + tesseract OCR for scanned PDFs, 100% local)
-- [x] Real video conversion (MP4 / WEBM native via &lt;video&gt; + canvas + MediaRecorder, MOV / MKV / AVI via optional on-demand vendored ffmpeg remux, quality slider maps to 480p–4K resolution rungs, 100% local)
-- [x] Batch download / save button
+- [x] Homepage
+- [x] Image, audio, document, and video conversion
+- [x] Batch download
+- [x] Mobile support
+
+## Credits
+
+Layout inspired by [cobalt.tools](https://cobalt.tools). Visual style inspired by [ChainGPT Labs](https://labs.chaingpt.org). Built with [pdf.js](https://mozilla.github.io/pdf.js/), [Tesseract](https://tesseract.projectnaptha.com/), [LAME](https://lame.sourceforge.io/), and [ffmpeg](https://ffmpeg.org/).
 
 ## License
 
-MIT
+Released under the [MIT License](LICENSE).
