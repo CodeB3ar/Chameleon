@@ -108,16 +108,6 @@ export function supportsVideoTarget(target) {
   return false;
 }
 
-// NOTE: there is deliberately NO input (decode) probe here. canPlayType()
-// is conservative and can report "" for containers the browser will still
-// play from a real file (byte-sniffing at load), so a probe can wrongly
-// claim NO SUPPORT where decoding actually works. Instead, every container
-// is accepted as input and decodeVideo() attempts the read, surfacing an
-// honest code (video-unsupported / decode-failed) only if that file truly
-// won't decode here — the same INPUT ONLY pattern as HEIC. Dropping the
-// optional ffmpeg build under assets/vendor/ffmpeg/ additionally unlocks
-// MOV/MKV/AVI *output* (and decoding for exotic codecs inside them).
-
 let ffmpegPromise = null;
 
 /**
@@ -139,7 +129,7 @@ export function ensureFfmpeg(onProgress) {
     };
     try {
       const s = document.createElement("script");
-      s.src = new URL("../assets/vendor/ffmpeg/ffmpeg.min.js?v=1", import.meta.url).href;
+      s.src = "./assets/vendor/ffmpeg/ffmpeg.min.js?v=1";
       s.async = true;
       s.onload = () => {
         try {
@@ -151,8 +141,8 @@ export function ensureFfmpeg(onProgress) {
       };
       s.onerror = () => finish(false);
       document.head.appendChild(s);
-      // Don't hang conversion on vendor load (1GB cold loads need longer).
-      setTimeout(() => finish(hasFfmpeg()), 30000);
+      // Don't hang conversion on vendor load.
+      setTimeout(() => finish(hasFfmpeg()), 8000);
     } catch {
       finish(false);
     }
@@ -182,7 +172,7 @@ export async function decodeVideo(blob) {
   el.preload = "auto";
   try {
     await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("decode-failed")), 60000);
+      const timer = setTimeout(() => reject(new Error("decode-failed")), 12000);
       el.onloadedmetadata = () => {
         clearTimeout(timer);
         resolve();
@@ -264,7 +254,7 @@ export function getVideoMetadata(blob) {
         }
         resolve(v);
       };
-      const timer = setTimeout(() => done(null), 30000);
+      const timer = setTimeout(() => done(null), 8000);
       el.onloadedmetadata = () => {
         clearTimeout(timer);
         const w = el.videoWidth || 0;
@@ -384,11 +374,8 @@ async function encodeViaRecorder(decoded, mime, rung, onProgress) {
     rec.onerror = () => reject(new Error("encode-failed"));
     rec.onstop = () => resolve();
   });
-  const rawDur = Number(decoded.duration);
-  const dur = Number.isFinite(rawDur) && rawDur > 0 ? rawDur : 0;
-  // 1GB clips can run long; unknown-duration containers (WEBM/MKV) must not
-  // false-timeout after 60s. Keep 4K rungs as-is per user choice.
-  const timeoutMs = dur > 0 ? Math.max(8000, dur * 1000 * 2 + 5000) : 20 * 60 * 1000;
+  const dur = Number(decoded.duration) || 0;
+  const timeoutMs = Math.max(8000, (dur || 1) * 1000 * 2 + 5000);
   let watchdog = null;
   const timeout = new Promise((_, reject) => {
     watchdog = setTimeout(() => {
@@ -421,22 +408,16 @@ async function encodeViaRecorder(decoded, mime, rung, onProgress) {
         throw new Error("encode-failed");
       }
     }
-    const t0 = Date.now();
     if (onProgress) {
       try {
         const tick = () => {
           if (rec.state === "inactive") return;
-          try {
-            if (dur > 0 && Number.isFinite(el.duration)) {
+          if (dur > 0 && Number.isFinite(el.duration)) {
+            try {
               onProgress(Math.min(1, (el.currentTime || 0) / dur));
-            } else {
-              // Unknown duration: creep 0 -> 0.9 over ~10min so the bar
-              // never sticks at 35% on large WEBM/MKV inputs. Keep 4K.
-              const elapsed = (Date.now() - t0) / 1000;
-              onProgress(Math.min(0.9, elapsed / 600));
+            } catch {
+              // ignore
             }
-          } catch {
-            // ignore
           }
           setTimeout(tick, 500);
         };
@@ -446,17 +427,13 @@ async function encodeViaRecorder(decoded, mime, rung, onProgress) {
       }
     }
     await new Promise((resolve) => {
-      let fallback = null;
       const end = () => {
         el.removeEventListener("ended", end);
-        if (fallback) clearTimeout(fallback);
         resolve();
       };
       el.addEventListener("ended", end);
       // Fallback: finite clips always end; guard absurd durations.
-      // Unknown-duration 1GB clips need room — cap at 20min, not 30s.
-      const fallbackMs = dur > 0 && Number.isFinite(dur) ? dur * 1000 + 8000 : 20 * 60 * 1000;
-      fallback = setTimeout(end, Math.max(10000, fallbackMs));
+      setTimeout(resolve, Math.max(10000, (dur || 10) * 1000 + 8000));
     });
     try {
       rec.stop();

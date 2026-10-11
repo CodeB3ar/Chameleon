@@ -7,7 +7,7 @@
    files stages and navigates automatically. Everything stays local. */
 
 import { initScramble } from "./scramble.js";
-import { isSupported, stubKind, fmtSize, shortName, IMAGE_TARGETS, AUDIO_TARGETS, DOC_TARGETS, VIDEO_TARGETS, familyOf, MAX_FILES, limitFor, limitLabelFor } from "./convert.js?v=4";
+import { isSupported, stubKind, fmtSize, IMAGE_TARGETS, AUDIO_TARGETS, DOC_TARGETS, VIDEO_TARGETS, familyOf } from "./convert.js?v=3";
 import { pushHistory } from "./history.js";
 import { putStaged } from "./store.js";
 
@@ -71,18 +71,6 @@ function renderTargets() {
   chipsEl.setAttribute("aria-label", "Convert to");
   chipsEl.append(label);
   const fam = queueFamily();
-  if (fam === "mixed") {
-    const note = document.createElement("span");
-    note.className = "cap";
-    note.textContent = "Mixed files — set formats on the Convert page";
-    chipsEl.append(note);
-    const more = document.createElement("a");
-    more.className = "chip";
-    more.href = "convert.html";
-    more.innerHTML = "More &rarr;";
-    chipsEl.append(more);
-    return;
-  }
   const list = fam === "audio" ? HOME_AUDIO_TARGETS : fam === "document" ? HOME_DOC_TARGETS : fam === "video" ? HOME_VIDEO_TARGETS : IMAGE_TARGETS;
   for (const f of list) {
     const on = f === target;
@@ -138,7 +126,7 @@ function syncTargetToQueue() {
   if (fam === "audio" && !AUDIO_TARGETS.includes(target)) target = "mp3";
   else if (fam === "document" && !DOC_TARGETS.includes(target)) target = "pdf";
   else if (fam === "video" && !VIDEO_TARGETS.includes(target)) target = "mp4";
-  if (fam === "image" && !IMAGE_TARGETS.includes(target)) target = "png";
+  if ((fam === "image" || fam === "") && !IMAGE_TARGETS.includes(target)) target = "png";
 }
 
 function addFiles(files) {

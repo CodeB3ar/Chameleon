@@ -20,11 +20,7 @@ import {
   AUDIO_CONVERTIBLE_TARGETS,
   DOC_CONVERTIBLE_TARGETS,
   VIDEO_CONVERTIBLE_TARGETS,
-  shortName,
-  MAX_FILES,
-  limitFor,
-  limitLabelFor,
-} from "./convert.js?v=4";
+} from "./convert.js?v=3";
 import { decodeImage, encodeImage, supportsWebp, getImageDimensions, outName } from "./encode.js";
 import {
   decodeDoc,
@@ -56,13 +52,13 @@ import {
   fmtVideoDuration,
   videoQualityLabel,
   outNameVideo,
-} from "./encode-video.js?v=3";
+} from "./encode-video.js?v=1";
 
 const GRID_FROM = 3; // < GRID_FROM files: long banner; >= GRID_FROM: grid
-const REAL_TARGETS = CONVERTIBLE_TARGETS;
-const REAL_AUDIO_TARGETS = AUDIO_CONVERTIBLE_TARGETS;
-const REAL_DOC_TARGETS = DOC_CONVERTIBLE_TARGETS;
-const REAL_VIDEO_TARGETS = VIDEO_CONVERTIBLE_TARGETS;
+const REAL_TARGETS = ["PNG", "JPG", "SVG", "WEBP"];
+const REAL_AUDIO_TARGETS = ["MP3", "WAV", "OGG", "AAC", "M4A"];
+const REAL_DOC_TARGETS = ["TXT", "MD", "RTF", "PDF", "DOCX", "EPUB"];
+const REAL_VIDEO_TARGETS = ["MP4", "WEBM", "MOV", "MKV", "AVI"];
 // Shell estimate weights (used until a real conversion measures bytes).
 // SVG wraps a PNG raster as base64, so it runs larger than the source.
 const WEIGHTS = { PNG: 1.0, JPG: 0.45, SVG: 1.35, WEBP: 0.35 };
@@ -254,7 +250,7 @@ function syncMode() {
     modeNote.hidden = false;
   }
   // Tiles/quality drive bulk conversion; hide them when bulk can't act.
-  const showBulkCtrls = mode === "bulk" && ok && files.some((f) => convertible(f));
+  const showBulkCtrls = mode === "bulk" && ok && files.some((f) => convertible(f) || f.family === "image" || f.family === "audio" || f.family === "document" || f.family === "video");
   tilesBlk.hidden = !showBulkCtrls && !(mode === "manual" && files.length === 1);
   // Text has no quality axis — hide the slider when every convertible job
   // ignores it (mirrors how lossless targets ignore quality).
@@ -345,10 +341,7 @@ function estimateKBFor(entry) {
     const qf = 0.35 + (1.85 * v) / 100;
     return ((srcKB * w) / BASE) * qf;
   }
-  const w = WEIGHTS[entry.target] || 0.4;
-  // PNG output ignores quality (encodeImage passes undefined) — don't scale the estimate.
-  const qf = entry.target === "PNG" ? 1 : 0.4 + (0.98 * v) / 100;
-  return ((srcKB * w) / BASE) * qf;
+  return (srcKB * (WEIGHTS[entry.target] || 0.4)) / BASE * (0.4 + (0.98 * v) / 100);
 }
 
 function fmtKB(kb) {
@@ -392,16 +385,9 @@ function renderTiles() {
   // Scale the grid to the tile count so every family fits one row
   // (documents render six tiles where the CSS default holds five).
   // Small screens keep the CSS 3-column wrap — six cramped tiles help nobody.
-  // Mid band (561–700px): six tiles wrap 3+3, five tiles cap at four —
-  // same cutoffs as the stylesheet, re-evaluated on breakpoint changes below.
   try {
     const narrow = window.matchMedia && window.matchMedia("(max-width:560px)").matches;
-    const mid = !narrow && window.matchMedia && window.matchMedia("(max-width:700px)").matches;
-    tilesEl.style.gridTemplateColumns = narrow
-      ? ""
-      : mid
-        ? `repeat(${defs.length >= 6 ? 3 : Math.min(defs.length, 4)},minmax(0,1fr))`
-        : `repeat(${defs.length},minmax(0,1fr))`;
+    tilesEl.style.gridTemplateColumns = narrow ? "" : `repeat(${defs.length},minmax(0,1fr))`;
   } catch {
     // CSS default covers it
   }
@@ -517,17 +503,10 @@ function syncTileAvailability() {
       if (!supportsVideoTarget(b.dataset.f)) {
         b.disabled = true;
         const needsVendor = ["MOV", "MKV", "AVI"].includes(b.dataset.f);
-        if (needsVendor) {
-          // Accepted as input, but this browser can't *produce* the
-          // container without the optional vendor build — same INPUT ONLY
-          // pattern as HEIC. (Input is always attempted; an unreadable
-          // file surfaces an honest error at convert time.)
-          b.title = `${b.dataset.f} is input-only here — drop one in and convert it to ${supportsVideoTarget("MP4") ? "MP4" : "WEBM"}. Producing ${b.dataset.f} files needs the optional local encoder (vendored ffmpeg).`;
-          labelTile(b, "INPUT ONLY");
-        } else {
-          b.title = `${b.dataset.f} encoding isn't supported in this browser — try ${supportsVideoTarget("MP4") ? "MP4" : "WEBM"}.`;
-          labelTile(b, "NO SUPPORT");
-        }
+        b.title = needsVendor
+          ? `${b.dataset.f} needs the optional local encoder (vendored ffmpeg, loaded on demand) — MP4 and WEBM work natively.`
+          : `${b.dataset.f} encoding isn't supported in this browser — try ${supportsVideoTarget("MP4") ? "MP4" : "WEBM"}.`;
+        labelTile(b, "NO SUPPORT");
       }
     });
   }
@@ -541,7 +520,7 @@ function syncConvertBtn() {
     multi ? `Convert ${n} file${n === 1 ? "" : "s"} &rarr;` : `Convert<span class="btn-extra"> to</span> ${activeTarget()} &rarr;`;
   btn.setAttribute("aria-label", multi ? `Convert ${n} file${n === 1 ? "" : "s"}` : `Convert to ${activeTarget()}`);
   btn.title =
-    n === 0 ? "Nothing convertible yet — images convert to PNG / JPG / SVG / WEBP, audio to MP3 / WAV / OGG / AAC / M4A, documents to TXT / MD / RTF / PDF / DOCX / EPUB, video to MP4 / WEBM / MOV / MKV / AVI." : multi ? "" : `Convert to ${activeTarget()}`;
+    n === 0 ? "Nothing convertible yet — images convert to PNG / JPG / SVG / WEBP, audio to MP3 / WAV / OGG / AAC / M4A, documents to TXT / MD / RTF / PDF / DOCX / EPUB, video to MP4 / WEBM / MOV / MKV / AVI." : "";
 }
 
 function renderEstimate() {
@@ -872,6 +851,98 @@ function renderSingleCard() {
   }
   const entry = file;
   const thumbBox = singleImg.parentElement;
+  singleName.textContent = entry.name;
+  singleName.title = entry.name;
+  const showAudio = entry.family === "audio";
+  const showDoc = entry.family === "document";
+  const showVideo = entry.family === "video";
+  if (singlePlayer) singlePlayer.hidden = !showAudio;
+  if (!showAudio) ppStop();
+  if (!showVideo) vidStop();
+  // Rebuild thumb so a previous HEIC fallback can't leak into the next file.
+  thumbBox.textContent = "";
+  if (showDoc) {
+    singleImg.hidden = true;
+    singleImg.removeAttribute("src");
+    const badge = document.createElement("span");
+    badge.className = "badge lg";
+    badge.textContent = srcExtOf(entry.name);
+    thumbBox.append(badge, singleImg);
+  } else if (showAudio) {
+    singleImg.hidden = true;
+    singleImg.removeAttribute("src");
+    if (singleVideo) singleVideo.hidden = true;
+    const badge = document.createElement("span");
+    badge.className = "badge lg";
+    badge.textContent = srcExtOf(entry.name);
+    thumbBox.append(badge, singleImg);
+    if (singleVideo) thumbBox.appendChild(singleVideo);
+    ppLoad(entry.url);
+  } else if (showVideo) {
+    // Muted inline preview (mirrors the audio player precedent): the
+    // element is the preview engine, never autoplayed.
+    singleImg.hidden = true;
+    singleImg.removeAttribute("src");
+    if (singleVideo) {
+      singleVideo.hidden = false;
+      if (entry.url && singleVideo.getAttribute("src") !== entry.url) {
+        try {
+          singleVideo.src = entry.url;
+        } catch {
+          // unreadable here — meta line still renders below
+        }
+      }
+      thumbBox.append(singleVideo, singleImg);
+    } else {
+      const badge = document.createElement("span");
+      badge.className = "badge lg";
+      badge.textContent = srcExtOf(entry.name);
+      thumbBox.append(badge, singleImg);
+    }
+    ppSeeking = false;
+    ppPaint();
+  });
+}
+if (ppMute && singleAudio) {
+  ppMute.addEventListener("click", () => {
+    try {
+      singleAudio.muted = !singleAudio.muted;
+      if (!singleAudio.muted && singleAudio.volume === 0) singleAudio.volume = 1;
+    } catch {
+      // ignore
+    }
+    ppMutePaint();
+  });
+}
+
+/** Stop the single-card video preview and release its element state. */
+function vidStop() {
+  if (!singleVideo) return;
+  try {
+    singleVideo.pause();
+  } catch {
+    // ignore
+  }
+  try {
+    singleVideo.removeAttribute("src");
+    singleVideo.load();
+  } catch {
+    // ignore
+  }
+  singleVideo.hidden = true;
+}
+
+/** Large preview card: image thumb, audio player, muted video, or doc badge. */
+function renderSingleCard() {
+  const show = files.length === 1 && !!file && (file.family === "image" || file.family === "audio" || file.family === "document" || file.family === "video");
+  singleCard.hidden = !show;
+  if (!show) {
+    ppStop();
+    vidStop();
+    return;
+  }
+  const entry = file;
+  const thumbBox = singleImg.parentElement;
   singleName.textContent = shortName(entry.name);
   singleName.title = entry.name;
   const showAudio = entry.family === "audio";
@@ -1141,10 +1212,8 @@ function renderRows() {
         const unsupportedAudio = entry.family === "audio" && !opt.soon && !supportsAudioTarget(opt.v);
         const unsupportedDoc = entry.family === "document" && !opt.soon && !supportsDocTarget(opt.v);
         const unsupportedVideo = entry.family === "video" && !opt.soon && !supportsVideoTarget(opt.v);
-        const inputOnlyVideo =
-          unsupportedVideo && ["MOV", "MKV", "AVI"].includes(opt.v);
         const disabled = opt.soon || unsupportedAudio || unsupportedDoc || unsupportedVideo;
-        const reason = opt.soon ? (opt.label || "soon").toUpperCase() : inputOnlyVideo ? "INPUT ONLY" : disabled ? "NO SUPPORT" : "";
+        const reason = opt.soon ? (opt.label || "soon").toUpperCase() : disabled ? "NO SUPPORT" : "";
         const item = document.createElement("li");
         item.className = "pick-opt" + (disabled ? " dis" : "") + (opt.v === entry.target ? " sel" : "");
         item.setAttribute("role", "option");
@@ -1382,11 +1451,7 @@ function removeAt(i) {
 function describeRejection(picked) {
   const seenType = String((picked && picked.type) || "") || "unknown type";
   const seenExt = extOf(picked && picked.name) || "no extension";
-  if (picked && picked.size > limitFor(picked))
-    return `${picked.name}: over ${limitLabelFor(picked)} — pick a smaller file.`;
-  const fam = familyOf(picked);
-  if (fam === "image" && !isSupported(picked))
-    return `${picked.name}: that image type isn't supported yet — PNG / JPG / SVG / WEBP / HEIC only. (saw ${seenType} / ${seenExt})`;
+  void kind;
   return `${picked.name}: unsupported file (saw ${seenType} / ${seenExt}) — images (PNG / JPG / SVG / WEBP / HEIC), audio (MP3 / WAV / OGG / AAC / M4A), video (MP4 / WEBM / MOV / MKV / AVI) or documents (TXT / MD / RTF / PDF / DOCX / EPUB) only.`;
 }
 
@@ -1926,9 +1991,7 @@ files.forEach((f) => {
     f.target = supportsDocTarget("PDF") ? "PDF" : "TXT";
   }
   if (f.family === "video" && !supportsVideoTarget(f.target)) {
-    if (supportsVideoTarget("MP4")) f.target = "MP4";
-    else if (supportsVideoTarget("WEBM")) f.target = "WEBM";
-    else f.target = "MP4";
+    f.target = supportsVideoTarget("MP4") ? "MP4" : supportsVideoTarget("WEBM") ? "WEBM" : "MP4";
   }
 });
 if (target && !supportsDocTarget(target) && REAL_DOC_TARGETS.includes(target)) target = "PDF";

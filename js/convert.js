@@ -96,6 +96,7 @@ export function stubKind(file) {
   const ext = extOf(file && file.name);
   if (!ext) return "";
   if (!STUB_EXTS.includes(ext)) return "";
+  if ([".mp4", ".mov", ".webm", ".mkv", ".avi"].includes(ext)) return "video";
   return "image";
 }
 
@@ -115,6 +116,7 @@ export function familyOf(file) {
     return "document";
   if (VIDEO_TYPES.includes(t) || VIDEO_EXTS.some((e) => String(file.name || "").toLowerCase().endsWith(e)))
     return "video";
+  if (isSupported(file)) return "image";
   const kind = stubKind(file);
   if (kind) return kind;
   if (t.startsWith("image/")) return "image";

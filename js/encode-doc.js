@@ -31,16 +31,19 @@ export const DOC_MIME_FOR = {
 // Pure-text targets ignore the quality slider (mirrors PNG/WAV + FAQ copy).
 export const DOC_LOSSLESS_TARGETS = ["TXT", "MD", "RTF", "DOCX", "EPUB"];
 
-const VENDOR_BASE = new URL("../assets/vendor/", import.meta.url).href.replace(/\/$/, "");
-const PDF_LIB_URL = VENDOR_BASE + "/pdf.min.mjs?v=1";
-const PDF_WORKER_URL = VENDOR_BASE + "/pdf.worker.min.mjs?v=1";
-const TESS_SCRIPT_URL = VENDOR_BASE + "/tesseract.min.js?v=1";
+const PDF_LIB_URL = "../assets/vendor/pdf.min.mjs?v=1";
+const PDF_WORKER_URL = "../assets/vendor/pdf.worker.min.mjs?v=1";
+const TESS_SCRIPT_URL = "./assets/vendor/tesseract.min.js?v=1";
 // Worker/core/lang URLs must be ABSOLUTE: the OCR worker resolves them
 // against its own script URL, so page-relative "./assets/…" would double
 // up to /assets/vendor/assets/vendor/… and 404. Absolute same-origin
 // URLs work from every context.
 function tessVendorBase() {
-  return VENDOR_BASE;
+  try {
+    return new URL("./assets/vendor/", document.baseURI).href.replace(/\/$/, "");
+  } catch {
+    return "./assets/vendor";
+  }
 }
 
 /* ---------------- capabilities ---------------- */
@@ -75,7 +78,8 @@ export function ensurePdf() {
     try {
       const lib = await import(PDF_LIB_URL);
       try {
-        if (lib.GlobalWorkerOptions) lib.GlobalWorkerOptions.workerSrc = PDF_WORKER_URL;
+        const workerUrl = new URL(PDF_WORKER_URL, import.meta.url).toString();
+        if (lib.GlobalWorkerOptions) lib.GlobalWorkerOptions.workerSrc = workerUrl;
       } catch {
         // workerSrc is best-effort; pdf.js still parses (slower fake-worker path)
       }
@@ -84,9 +88,6 @@ export function ensurePdf() {
       return null;
     }
   })();
-  pdfPromise.then((lib) => {
-    if (!lib) pdfPromise = null;
-  });
   return pdfPromise;
 }
 
@@ -105,26 +106,17 @@ export function ensureTesseract() {
   if (hasTesseract()) return Promise.resolve(true);
   if (tessPromise) return tessPromise;
   tessPromise = new Promise((resolve) => {
-    let done = false;
-    const finish = (ok) => {
-      if (done) return;
-      done = true;
-      resolve(ok);
-    };
     try {
       const s = document.createElement("script");
       s.src = TESS_SCRIPT_URL;
       s.async = true;
-      s.onload = () => finish(hasTesseract());
-      s.onerror = () => finish(false);
+      s.onload = () => resolve(hasTesseract());
+      s.onerror = () => resolve(false);
       document.head.appendChild(s);
-      setTimeout(() => finish(hasTesseract()), 8000);
+      setTimeout(() => resolve(hasTesseract()), 8000);
     } catch {
-      finish(false);
+      resolve(false);
     }
-  });
-  tessPromise.then((ok) => {
-    if (!ok) tessPromise = null;
   });
   return tessPromise;
 }
@@ -960,17 +952,7 @@ function docxRuns(pEl) {
 function docxParaStyle(pEl) {
   const pPr = findChild(pEl, "pPr");
   const ps = pPr && findChild(pPr, "pStyle");
-  if (!ps) return "";
-  try {
-    return (
-      ps.getAttributeNS("http://schemas.openxmlformats.org/wordprocessingml/2006/main", "val") ||
-      ps.getAttribute("w:val") ||
-      ps.getAttribute("val") ||
-      ""
-    );
-  } catch {
-    return ps.getAttribute("w:val") || "";
-  }
+  return (ps && (ps.getAttribute("w:val") || "")) || "";
 }
 
 function decodeDocx(bytes) {
@@ -1029,16 +1011,7 @@ function decodeDocx(bytes) {
         // Embedded images live in drawings attached to runs.
         const imgs = [];
         for (const blip of findAll(el, "blip")) {
-          let rid = null;
-          try {
-            rid =
-              blip.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "embed") ||
-              blip.getAttributeNS("http://schemas.openxmlformats.org/drawingml/2006/main", "embed") ||
-              blip.getAttribute("r:embed") ||
-              blip.getAttribute("embed");
-          } catch {
-            rid = blip.getAttribute("r:embed") || blip.getAttribute("embed");
-          }
+          const rid = blip.getAttribute("r:embed") || blip.getAttribute("embed");
           const target = rid && rels.get(rid);
           if (target && images.has(target)) imgs.push(images.get(target));
         }
@@ -1050,7 +1023,7 @@ function decodeDocx(bytes) {
         const listStyle = /^List(Bullet\d*|Number\d*)$/.test(style)
           ? (style.startsWith("ListNumber") ? "ol" : "ul")
           : null;
-        const listKind = listStyle || (numPr ? "ol" : null);
+        const listKind = numPr ? "ul" : listStyle;
         const text = runsText(runs).replace(/\n/g, " ").trim();
         if (hm) pushBlock({ t: "h", level: Number(hm[1]), runs: runs.length ? runs : [run(text)] });
         else if (listKind) {
@@ -1767,16 +1740,7 @@ function docExtOf(name) {
  */
 export async function decodeDoc(blob, nameHint, onProgress) {
   const name = (blob && blob.name) || nameHint || "";
-  let ext = docExtOf(name);
-  if (!ext || ext === ".markdown") {
-    const mt = String((blob && blob.type) || "").toLowerCase();
-    if (mt.includes("pdf")) ext = ".pdf";
-    else if (mt.includes("wordprocessingml")) ext = ".docx";
-    else if (mt.includes("epub")) ext = ".epub";
-    else if (mt.includes("rtf")) ext = ".rtf";
-    else if (mt.includes("markdown")) ext = ".md";
-    else if (mt === "text/plain") ext = ".txt";
-  }
+  const ext = docExtOf(name);
   if (ext === ".txt") {
     const model = decodeTxt(await blob.text());
     return { model, excerpt: excerptOf(model) };
