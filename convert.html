@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Chameleon — Convert a PNG</title>
-   <link rel="stylesheet" href="css/style.css?v=13" />
+  <title>Chameleon — Convert</title>
+   <link rel="stylesheet" href="css/style.css?v=15" />
 </head>
 <body>
   <div class="pg" data-format="webp">
@@ -28,7 +28,7 @@
         <div class="cols2">
           <div class="main"><div class="panel c">
             <div class="steps" role="tablist" aria-label="Progress" id="steps">
-              <button class="st" role="tab" type="button" id="tab1" aria-selected="false" aria-controls="view-drop">01 Drop</button><button class="st" role="tab" type="button" id="tab2" aria-selected="true" aria-controls="view-choose" title="02 Choose + Convert">02 <span class="st-extra">Choose + </span>Convert</button><button class="st" role="tab" type="button" id="tab3" aria-selected="false" aria-controls="view-dl">03 Download</button>
+              <button class="st" role="tab" type="button" id="tab1" aria-selected="true" aria-controls="view-drop">01 Drop</button><button class="st" role="tab" type="button" id="tab2" aria-selected="false" aria-controls="view-choose" title="02 Choose + Convert">02 <span class="st-extra">Choose + </span>Convert</button><button class="st" role="tab" type="button" id="tab3" aria-selected="false" aria-controls="view-dl">03 Download</button>
             </div>
             <div id="view-drop" role="tabpanel" aria-labelledby="tab1">
               <div id="drop-empty">
@@ -37,8 +37,14 @@
                   <strong>Drag &amp; Drop your file here</strong>
                   <span class="cap">or</span>
                   <button class="btn dk" type="button" id="empty-browse-btn">Choose file</button>
-                  <span class="cap">Images, audio, video and documents · Up to 20 files · Video 1 GB desktop / 200 MB phone · Others 50 MB</span>
+                  <span class="cap">Up to 20 files · Video up to 1 GB · Others up to 50 MB</span>
                 </div>
+              </div>
+              <div class="sample-bar" id="sample-bar">
+                <span class="cap">Try a sample:</span>
+                <button class="chip" type="button" data-sample="image">🖼 Sample image</button>
+                <button class="chip" type="button" data-sample="video">▶ Sample video</button>
+                <button class="btn" type="button" id="to-choose">Continue →</button>
               </div>
               <ul class="flist" id="file-grid" role="listbox" aria-label="Staged files" hidden></ul>
               <div class="go">
@@ -46,10 +52,9 @@
                   <button class="btn dk" type="button" id="change-btn" hidden>Add more</button>
                   <input class="vh" id="change-input" type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp,image/heic,image/heif,audio/mpeg,audio/wav,audio/aac,audio/ogg,audio/mp4,audio/webm,text/plain,text/markdown,text/x-markdown,application/rtf,text/rtf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/epub+zip,.png,.jpg,.jpeg,.svg,.webp,.heic,.heif,.bmp,.tif,.tiff,.mp3,.wav,.aac,.ogg,.oga,.opus,.m4a,.weba,.3gp,.mp4,.mov,.webm,.mkv,.avi,.pdf,.docx,.txt,.md,.markdown,.rtf,.epub" multiple />
                 </span>
-                <button class="btn" type="button" id="to-choose">Continue →</button>
               </div>
             </div>
-            <div id="view-choose" role="tabpanel" aria-labelledby="tab2">
+            <div id="view-choose" role="tabpanel" aria-labelledby="tab2" hidden>
               <div class="fcard hero-card" id="single-card" hidden>
                 <div class="hero-thumb"><img id="single-img" alt=""><video id="single-video" muted playsinline preload="metadata" hidden></video></div>
                 <div class="fcard-body"><div class="nm" id="single-name">—</div><div class="cap" id="single-meta">—</div>
@@ -126,7 +131,7 @@
           <div><div class="fh">Product</div><a class="fl" href="index.html#formats">Formats</a><a class="fl" href="index.html#how">How it works</a><a class="fl" href="faq.html">FAQ</a></div>
         </div>
         <button class="mark disp" type="button" scramble-link scramble-text data-text="Chameleon" data-glyphs="upper" title="Tap to scramble" aria-label="Chameleon — activate to scramble">Chameleon</button>
-        <div class="copy"><span>© 2026 Chameleon. All rights reserved.</span></div>
+        <div class="copy"><span>© 2026 Chameleon. Released under the MIT License.</span></div>
       </div>
     </footer>
   </div>

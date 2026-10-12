@@ -7,7 +7,7 @@
    files stages and navigates automatically. Everything stays local. */
 
 import { initScramble } from "./scramble.js";
-import { isSupported, stubKind, fmtSize, shortName, IMAGE_TARGETS, AUDIO_TARGETS, DOC_TARGETS, VIDEO_TARGETS, familyOf } from "./convert.js?v=4";
+import { isSupported, stubKind, fmtSize, shortName, IMAGE_TARGETS, AUDIO_TARGETS, DOC_TARGETS, VIDEO_TARGETS, familyOf, MAX_FILES, limitFor, limitLabelFor } from "./convert.js?v=4";
 import { pushHistory } from "./history.js";
 import { putStaged } from "./store.js";
 
@@ -341,6 +341,43 @@ async function stageAndGo() {
 }
 
 convertBtn.addEventListener("click", stageAndGo);
+
+// --- sample files (bar beneath the drop zone) ---
+const SAMPLES = {
+  image: { url: "assets/samples/sample-image.jpg", name: "sample-image.jpg", type: "image/jpeg" },
+  video: { url: "assets/samples/sample-video.mp4", name: "sample-video.mp4", type: "video/mp4" },
+};
+async function loadSample(kind, btn) {
+  const def = SAMPLES[kind];
+  if (!def || !btn || btn.disabled) return;
+  btn.disabled = true;
+  setStatus(`Loading ${def.name}…`);
+  try {
+    const res = await fetch(def.url);
+    if (!res.ok) throw new Error("fetch failed");
+    const blob = await res.blob();
+    const file = new File([blob], def.name, { type: blob.type || def.type });
+    // Samples skip the home queue: stage straight through to the convert
+    // page, which opens on section 2 (Choose) when staged files arrive.
+    const fam = familyOf(file);
+    const sampleTarget = fam === "video" ? "mp4" : fam === "audio" ? "mp3" : fam === "document" ? "pdf" : "png";
+    const { memoryOnly } = await putStaged(
+      [{ file, name: file.name, size: file.size, type: file.type }],
+      sampleTarget
+    );
+    if (memoryOnly) setStatus("Staged (this browser blocks storage — don't reload before converting).");
+    location.href = `convert.html?staged=1&target=${encodeURIComponent(sampleTarget)}`;
+  } catch {
+    setStatus("Sample couldn't load — check your connection and try again.");
+  } finally {
+    btn.disabled = false;
+  }
+}
+document.getElementById("sample-bar")?.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-sample]");
+  if (!btn) return;
+  loadSample(btn.dataset.sample, btn);
+});
 
 // --- init ---
 initScramble();

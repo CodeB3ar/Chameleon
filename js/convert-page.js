@@ -21,6 +21,8 @@ import {
   DOC_CONVERTIBLE_TARGETS,
   VIDEO_CONVERTIBLE_TARGETS,
   shortName,
+  MAX_FILES,
+  limitFor,
 } from "./convert.js?v=4";
 import { decodeImage, encodeImage, supportsWebp, getImageDimensions, outName } from "./encode.js";
 import {
@@ -150,7 +152,7 @@ let target = "WEBP"; // global (bulk) target
 let mode = "bulk"; // "bulk" | "manual"
 let extraCount = 0;
 let busy = false;
-let activeTab = 2;
+let activeTab = 1;
 let results = []; // { entryName, blob, url, name, size, target, quality }
 let seq = 0;
 const dimsCache = new Map(); // hid -> { w, h } | null (null = undecodable here)
@@ -907,98 +909,6 @@ function renderSingleCard() {
       badge.textContent = srcExtOf(entry.name);
       thumbBox.append(badge, singleImg);
     }
-    ppSeeking = false;
-    ppPaint();
-  });
-}
-if (ppMute && singleAudio) {
-  ppMute.addEventListener("click", () => {
-    try {
-      singleAudio.muted = !singleAudio.muted;
-      if (!singleAudio.muted && singleAudio.volume === 0) singleAudio.volume = 1;
-    } catch {
-      // ignore
-    }
-    ppMutePaint();
-  });
-}
-
-/** Stop the single-card video preview and release its element state. */
-function vidStop() {
-  if (!singleVideo) return;
-  try {
-    singleVideo.pause();
-  } catch {
-    // ignore
-  }
-  try {
-    singleVideo.removeAttribute("src");
-    singleVideo.load();
-  } catch {
-    // ignore
-  }
-  singleVideo.hidden = true;
-}
-
-/** Large preview card: image thumb, audio player, muted video, or doc badge. */
-function renderSingleCard() {
-  const show = files.length === 1 && !!file && (file.family === "image" || file.family === "audio" || file.family === "document" || file.family === "video");
-  singleCard.hidden = !show;
-  if (!show) {
-    ppStop();
-    vidStop();
-    return;
-  }
-  const entry = file;
-  const thumbBox = singleImg.parentElement;
-  singleName.textContent = shortName(entry.name);
-  singleName.title = entry.name;
-  const showAudio = entry.family === "audio";
-  const showDoc = entry.family === "document";
-  const showVideo = entry.family === "video";
-  if (singlePlayer) singlePlayer.hidden = !showAudio;
-  if (!showAudio) ppStop();
-  if (!showVideo) vidStop();
-  // Rebuild thumb so a previous HEIC fallback can't leak into the next file.
-  thumbBox.textContent = "";
-  if (showDoc) {
-    singleImg.hidden = true;
-    singleImg.removeAttribute("src");
-    const badge = document.createElement("span");
-    badge.className = "badge lg";
-    badge.textContent = srcExtOf(entry.name);
-    thumbBox.append(badge, singleImg);
-  } else if (showAudio) {
-    singleImg.hidden = true;
-    singleImg.removeAttribute("src");
-    if (singleVideo) singleVideo.hidden = true;
-    const badge = document.createElement("span");
-    badge.className = "badge lg";
-    badge.textContent = srcExtOf(entry.name);
-    thumbBox.append(badge, singleImg);
-    if (singleVideo) thumbBox.appendChild(singleVideo);
-    ppLoad(entry.url);
-  } else if (showVideo) {
-    // Muted inline preview (mirrors the audio player precedent): the
-    // element is the preview engine, never autoplayed.
-    singleImg.hidden = true;
-    singleImg.removeAttribute("src");
-    if (singleVideo) {
-      singleVideo.hidden = false;
-      if (entry.url && singleVideo.getAttribute("src") !== entry.url) {
-        try {
-          singleVideo.src = entry.url;
-        } catch {
-          // unreadable here — meta line still renders below
-        }
-      }
-      thumbBox.append(singleVideo, singleImg);
-    } else {
-      const badge = document.createElement("span");
-      badge.className = "badge lg";
-      badge.textContent = srcExtOf(entry.name);
-      thumbBox.append(badge, singleImg);
-    }
   } else {
     if (entry.url) {
       singleImg.hidden = false;
@@ -1318,7 +1228,7 @@ function renderActiveMeta() {
   toChoose.title = "";
   const multi = files.length > 1;
   const h1 = multi ? "Convert your files" : "Convert your " + srcExt;
-  document.title = multi ? "Chameleon — Convert files" : "Chameleon — Convert a " + srcExt;
+  document.title = multi ? "Chameleon — Convert files" : "Chameleon — Convert a file";
   h1txt.dataset.text = h1;
   h1txt.textContent = h1;
 }
@@ -1687,6 +1597,33 @@ convertDrop.addEventListener("keydown", (event) => {
 changeInput.addEventListener("change", () => {
   if (changeInput.files && changeInput.files.length) addFiles(changeInput.files);
   changeInput.value = "";
+});
+
+// Sample files (bar beneath the drop zone) — same assets as home.
+const SAMPLES = {
+  image: { url: "assets/samples/sample-image.jpg", name: "sample-image.jpg", type: "image/jpeg" },
+  video: { url: "assets/samples/sample-video.mp4", name: "sample-video.mp4", type: "video/mp4" },
+};
+async function loadSample(kind, btn) {
+  const def = SAMPLES[kind];
+  if (!def || !btn || btn.disabled) return;
+  btn.disabled = true;
+  setStatus(`Loading ${def.name}…`);
+  try {
+    const res = await fetch(def.url);
+    if (!res.ok) throw new Error("fetch failed");
+    const blob = await res.blob();
+    addFiles([new File([blob], def.name, { type: blob.type || def.type })]);
+  } catch {
+    setStatus("Sample couldn't load — check your connection and try again.");
+  } finally {
+    btn.disabled = false;
+  }
+}
+document.getElementById("sample-bar")?.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-sample]");
+  if (!btn) return;
+  loadSample(btn.dataset.sample, btn);
 });
 let convertDragDepth = 0;
 convertDrop.addEventListener("dragenter", (event) => {

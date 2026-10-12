@@ -247,19 +247,3 @@ export function shortName(name, max) {
   const keep = Math.max(1, m - ext.length - 1);
   return s.slice(0, keep) + "…" + ext;
 }
-
-/**
- * Shorten a filename for display: names longer than `max` chars render as
- * stem + "…" + extension (e.g. "my-vacation-photos-f….mp4"), so the file
- * type stays visible. Short names return unchanged. The full name always
- * stays in the element's `title` tooltip — callers set that separately.
- */
-export function shortName(name, max) {
-  const s = String(name || "");
-  const m = Math.max(8, Number(max) || 24);
-  if (s.length <= m) return s;
-  const i = s.lastIndexOf(".");
-  const ext = i > 0 ? s.slice(i) : "";
-  const keep = Math.max(1, m - ext.length - 1);
-  return s.slice(0, keep) + "…" + ext;
-}
